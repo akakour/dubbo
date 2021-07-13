@@ -89,12 +89,17 @@ public abstract class AbstractConfig implements Serializable {
         return value;
     }
 
+    /**
+     * 填充配置类的属性
+     * @param config
+     */
     protected static void appendProperties(AbstractConfig config) {
         if (config == null) {
             return;
         }
         String prefix = "dubbo." + getTagName(config.getClass()) + ".";
         Method[] methods = config.getClass().getMethods();
+        // 配置属性的赋值 setXXX
         for (Method method : methods) {
             try {
                 String name = method.getName();
@@ -112,6 +117,7 @@ public abstract class AbstractConfig implements Serializable {
                     }
                     if (value == null || value.length() == 0) {
                         String pn = prefix + property;
+                        // 从系统变量拿对应的值，来set
                         value = System.getProperty(pn);
                         if (!StringUtils.isBlank(value)) {
                             logger.info("Use System Property " + pn + " to config dubbo");
@@ -129,11 +135,13 @@ public abstract class AbstractConfig implements Serializable {
                             }
                         }
                         if (getter != null) {
+                            // 有getXX，但是getXX没值，就从配置文件dubbo.properties文件拿值。
                             if (getter.invoke(config) == null) {
                                 if (config.getId() != null && config.getId().length() > 0) {
                                     value = ConfigUtils.getProperty(prefix + config.getId() + "." + property);
                                 }
                                 if (value == null || value.length() == 0) {
+                                    // dubbo.properties拿值
                                     value = ConfigUtils.getProperty(prefix + property);
                                 }
                                 if (value == null || value.length() == 0) {
@@ -156,6 +164,12 @@ public abstract class AbstractConfig implements Serializable {
         }
     }
 
+    /**
+     * 从dubboconfig类名得到tag名
+     *  ProviderConfig -> provider
+     * @param cls
+     * @return
+     */
     private static String getTagName(Class<?> cls) {
         String tag = cls.getSimpleName();
         for (String suffix : SUFFIXES) {

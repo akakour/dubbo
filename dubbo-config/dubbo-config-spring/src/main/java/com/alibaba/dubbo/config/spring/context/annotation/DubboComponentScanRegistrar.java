@@ -54,10 +54,17 @@ public class DubboComponentScanRegistrar implements ImportBeanDefinitionRegistra
     @Override
     public void registerBeanDefinitions(AnnotationMetadata importingClassMetadata, BeanDefinitionRegistry registry) {
 
+        // 拿到@EnableDubbo的basePackages配置的值
         Set<String> packagesToScan = getPackagesToScan(importingClassMetadata);
 
+        /**
+         * @Service 相关处理PostProcessor： ServiceAnnotationBeanPostProcessor 的注入
+         */
         registerServiceAnnotationBeanPostProcessor(packagesToScan, registry);
 
+        /**
+         * @Reference 相关{PostProcessor： ReferenceAnnotationBeanPostProcessor 的注入，其实这里和packagesToScan一点关系都没有，可以看做是单独的一步。
+         */
         registerReferenceAnnotationBeanPostProcessor(registry);
 
     }

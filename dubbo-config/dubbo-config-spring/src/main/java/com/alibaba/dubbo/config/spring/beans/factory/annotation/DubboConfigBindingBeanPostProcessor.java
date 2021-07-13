@@ -79,22 +79,46 @@ public class DubboConfigBindingBeanPostProcessor implements BeanPostProcessor, A
         this.beanName = beanName;
     }
 
+    /**
+     * 时序上 晚于afterpropertiesset
+     *  进行数据绑定
+     * @param bean
+     * @param beanName
+     * @return
+     * @throws BeansException
+     */
     @Override
     public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
 
+        // 只有是beanname为指定某种的XXXConfig类实例化的时候，才会处理
         if (beanName.equals(this.beanName) && bean instanceof AbstractConfig) {
 
+            // 强转成父类
             AbstractConfig dubboConfig = (AbstractConfig) bean;
 
+            /**
+             * 数据绑定
+             */
             bind(prefix, dubboConfig);
 
+            /**
+             * 进行自定义的定制处理
+             *  实际上，默认的dubbo中只会有一个 NamePropertyDefaultValueDubboConfigBeanCustomizer
+             *  这个类的作用就是 给dubboConfig设置name属性为beanname，如果有name属性的话。
+             */
             customize(beanName, dubboConfig);
         }
         return bean;
     }
 
+    /**
+     * 数据绑定
+     * @param prefix
+     * @param dubboConfig
+     */
     private void bind(String prefix, AbstractConfig dubboConfig) {
 
+        // 委托DubboConfigBinder去处理 。DubboConfigBinder 持有Env对象
         dubboConfigBinder.bind(prefix, dubboConfig);
 
         if (log.isInfoEnabled()) {
@@ -129,15 +153,26 @@ public class DubboConfigBindingBeanPostProcessor implements BeanPostProcessor, A
         this.applicationContext = applicationContext;
     }
 
+    /**
+     * 时序上 aftersert最早
+     *
+     * @throws Exception
+     */
     @Override
     public void afterPropertiesSet() throws Exception {
 
+        // 初始化一个DubboConfigBinder对象
         initDubboConfigBinder();
 
+        // 加载所有的 自定义定制类：spring中DubboConfigBeanCustomizer的所有实现类
         initConfigBeanCustomizers();
 
     }
 
+    /**
+     * 初始化DubboConfigBinder为 DefaultDubboConfigBinder
+     * 并持有Env实例
+     */
     private void initDubboConfigBinder() {
 
         if (dubboConfigBinder == null) {
@@ -165,6 +200,7 @@ public class DubboConfigBindingBeanPostProcessor implements BeanPostProcessor, A
     }
 
     /**
+     * 创建一个 数据绑定类DubboConfigBinder
      * Create {@link DubboConfigBinder} instance.
      *
      * @param environment

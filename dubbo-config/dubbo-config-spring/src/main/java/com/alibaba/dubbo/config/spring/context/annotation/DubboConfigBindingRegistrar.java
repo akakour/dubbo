@@ -63,21 +63,31 @@ public class DubboConfigBindingRegistrar implements ImportBeanDefinitionRegistra
     @Override
     public void registerBeanDefinitions(AnnotationMetadata importingClassMetadata, BeanDefinitionRegistry registry) {
 
+        // 拿到EnableDubboConfigBinding数组
         AnnotationAttributes attributes = AnnotationAttributes.fromMap(
                 importingClassMetadata.getAnnotationAttributes(EnableDubboConfigBinding.class.getName()));
 
+        // 将EnableDubboConfigBinding配置的类型和数据绑定
         registerBeanDefinitions(attributes, registry);
 
     }
 
+    /**
+     * 数据绑定 得到XXconfig的bd，注册到spring容器
+     * @param attributes
+     * @param registry
+     */
     protected void registerBeanDefinitions(AnnotationAttributes attributes, BeanDefinitionRegistry registry) {
 
+        // 前缀 例：dubbo.application
         String prefix = environment.resolvePlaceholders(attributes.getString("prefix"));
 
+        // 拿到对应的配置类 例： ApplicationConfig
         Class<? extends AbstractConfig> configClass = attributes.getClass("type");
 
         boolean multiple = attributes.getBoolean("multiple");
 
+        // 向spring容器注册配置类以及数据绑定操作处理类。。该处理类在实例化过程被触发，进而完成配置类属性填充
         registerDubboConfigBeans(prefix, configClass, multiple, registry);
 
     }
@@ -87,6 +97,7 @@ public class DubboConfigBindingRegistrar implements ImportBeanDefinitionRegistra
                                           boolean multiple,
                                           BeanDefinitionRegistry registry) {
 
+        // 从spring上下文环境中 拿到这个前缀配置的所有属性
         Map<String, Object> properties = getSubProperties(environment.getPropertySources(), prefix);
 
         if (CollectionUtils.isEmpty(properties)) {
@@ -97,17 +108,21 @@ public class DubboConfigBindingRegistrar implements ImportBeanDefinitionRegistra
             return;
         }
 
+        // 拿到对应的配置类
         Set<String> beanNames = multiple ? resolveMultipleBeanNames(properties) :
                 Collections.singleton(resolveSingleBeanName(properties, configClass, registry));
 
         for (String beanName : beanNames) {
 
+            // 注册配置类到spring容器
             registerDubboConfigBean(beanName, configClass, registry);
 
+            // 注册configClass和数据的绑定处理类，这个类在实例化中会被触发，最终执行bind操作，将configClass填充
             registerDubboConfigBindingBeanPostProcessor(prefix, beanName, multiple, registry);
 
         }
 
+        // 自定义javabean 无用
         registerDubboConfigBeanCustomizers(registry);
 
     }
@@ -128,6 +143,13 @@ public class DubboConfigBindingRegistrar implements ImportBeanDefinitionRegistra
 
     }
 
+    /**
+     * 向 spring容器注册数据绑定处理类 DubboConfigBindingBeanPostProcessor
+     * @param prefix
+     * @param beanName
+     * @param multiple
+     * @param registry
+     */
     private void registerDubboConfigBindingBeanPostProcessor(String prefix, String beanName, boolean multiple,
                                                              BeanDefinitionRegistry registry) {
 

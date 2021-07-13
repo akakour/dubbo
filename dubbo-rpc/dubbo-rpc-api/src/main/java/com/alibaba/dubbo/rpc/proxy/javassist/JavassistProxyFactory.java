@@ -35,15 +35,26 @@ public class JavassistProxyFactory extends AbstractProxyFactory {
         return (T) Proxy.getProxy(interfaces).newInstance(new InvokerInvocationHandler(invoker));
     }
 
+    /**
+     * 生成能过最终调用目标类的invoker
+     * @param proxy
+     * @param type
+     * @param url
+     * @param <T>
+     * @return
+     */
     @Override
     public <T> Invoker<T> getInvoker(T proxy, Class<T> type, URL url) {
         // TODO Wrapper cannot handle this scenario correctly: the classname contains '$'
+        // javassist技术生成目标对应的包装类，实际上自定义接口的话，一般不会写wapper类。那就是直接就是接口的实现类
         final Wrapper wrapper = Wrapper.getWrapper(proxy.getClass().getName().indexOf('$') < 0 ? proxy.getClass() : type);
+        // AbstractProxyInvoker是目标服务的包装类，doInvoke可以调用目标类的方法
         return new AbstractProxyInvoker<T>(proxy, type, url) {
             @Override
             protected Object doInvoke(T proxy, String methodName,
                                       Class<?>[] parameterTypes,
                                       Object[] arguments) throws Throwable {
+                // 可以调目标类的方法
                 return wrapper.invokeMethod(proxy, methodName, parameterTypes, arguments);
             }
         };

@@ -103,16 +103,32 @@ public class ReferenceAnnotationBeanPostProcessor extends AnnotationInjectedBean
         return Collections.unmodifiableMap(injectedMethodReferenceBeanCache);
     }
 
+    /**
+     * 得到 @Refernece 注入类代理实例
+     * @param reference
+     * @param bean
+     * @param beanName
+     * @param injectedType
+     * @param injectedElement
+     * @return
+     * @throws Exception
+     */
     @Override
     protected Object doGetInjectedBean(Reference reference, Object bean, String beanName, Class<?> injectedType,
                                        InjectionMetadata.InjectedElement injectedElement) throws Exception {
 
+        // 创建beanname
         String referencedBeanName = buildReferencedBeanName(reference, injectedType);
 
+        // 将@Reference注入对象封装成RefernceBean
         ReferenceBean referenceBean = buildReferenceBeanIfAbsent(referencedBeanName, reference, injectedType, getClassLoader());
 
+        // 缓存
         cacheInjectedReferenceBean(referenceBean, injectedElement);
 
+        /**
+         * 核心 生成远程RPC调用代理类
+         */
         Object proxy = buildProxy(referencedBeanName, referenceBean, injectedType);
 
         return proxy;
@@ -209,6 +225,11 @@ public class ReferenceAnnotationBeanPostProcessor extends AnnotationInjectedBean
         return referenceBean;
     }
 
+    /**
+     * 全局缓存@Reference bean
+     * @param referenceBean
+     * @param injectedElement
+     */
     private void cacheInjectedReferenceBean(ReferenceBean referenceBean,
                                             InjectionMetadata.InjectedElement injectedElement) {
         if (injectedElement.getMember() instanceof Field) {
@@ -223,11 +244,18 @@ public class ReferenceAnnotationBeanPostProcessor extends AnnotationInjectedBean
         this.applicationContext = applicationContext;
     }
 
+    /**
+     * @Reference 的事件监听处理
+     * @param event
+     */
     @Override
     public void onApplicationEvent(ApplicationEvent event) {
+        // 1. @ServiceBean暴露成功之后的处理
         if (event instanceof ServiceBeanExportedEvent) {
+            // 这里才会真正的生成ReferenceBean的代理对象
             onServiceBeanExportEvent((ServiceBeanExportedEvent) event);
         } else if (event instanceof ContextRefreshedEvent) {
+            // 2. spring容器初始化成功之后的处理，实际是一个扩张接口，并没有实际处理
             onContextRefreshedEvent((ContextRefreshedEvent) event);
         }
     }

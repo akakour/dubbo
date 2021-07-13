@@ -39,6 +39,11 @@ public class NamePropertyDefaultValueDubboConfigBeanCustomizer implements DubboC
      */
     private static final String PROPERTY_NAME = "name";
 
+    /**
+     * 通过反射设定javabean的name属性为beanname，如果有的话。
+     * @param beanName
+     * @param dubboConfigBean
+     */
     @Override
     public void customize(String beanName, AbstractConfig dubboConfigBean) {
 

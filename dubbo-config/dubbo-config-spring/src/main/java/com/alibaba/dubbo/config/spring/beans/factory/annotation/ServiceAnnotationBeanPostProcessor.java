@@ -96,12 +96,21 @@ public class ServiceAnnotationBeanPostProcessor implements BeanDefinitionRegistr
         this.packagesToScan = packagesToScan;
     }
 
+    /**
+     * @Service 的收集 BD注册处理
+     * @param registry
+     * @throws BeansException
+     */
     @Override
     public void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry) throws BeansException {
 
+        // 完成Spel的spaceholder的替换，由此可见 dubbo的扫描路径是可以使用spel语法的
         Set<String> resolvedPackagesToScan = resolvePackagesToScan(packagesToScan);
 
         if (!CollectionUtils.isEmpty(resolvedPackagesToScan)) {
+            /**
+             *  扫描注册成 ServiceBean
+              */
             registerServiceBeans(resolvedPackagesToScan, registry);
         } else {
             if (logger.isWarnEnabled()) {
@@ -113,34 +122,37 @@ public class ServiceAnnotationBeanPostProcessor implements BeanDefinitionRegistr
 
 
     /**
-     * Registers Beans whose classes was annotated {@link Service}
+     * 配置扫描器，全路径扫描得到@Service注解的类，封装成ServiceBean注册到spring容器
      *
      * @param packagesToScan The base packages to scan
      * @param registry       {@link BeanDefinitionRegistry}
      */
     private void registerServiceBeans(Set<String> packagesToScan, BeanDefinitionRegistry registry) {
 
+        // 1. 创建一个自定义扫描器 类比 org.mybatis.spring.mapper.ClassPathMapperScanner
         DubboClassPathBeanDefinitionScanner scanner =
                 new DubboClassPathBeanDefinitionScanner(registry, environment, resourceLoader);
 
         BeanNameGenerator beanNameGenerator = resolveBeanNameGenerator(registry);
-
+        // 配置beanname生成器（规则）
         scanner.setBeanNameGenerator(beanNameGenerator);
 
+        // 2. 配置需要扫描的是 @Service 注解
         scanner.addIncludeFilter(new AnnotationTypeFilter(Service.class));
 
         for (String packageToScan : packagesToScan) {
 
-            // Registers @Service Bean first
+            // 3.. 扫描指定路径，封装成bd
             scanner.scan(packageToScan);
 
-            // Finds all BeanDefinitionHolders of @Service whether @ComponentScan scans or not.
+            // 查找@Service 的所有BeanDefinitionHolders，无论@ComponentScan 是否扫描。
             Set<BeanDefinitionHolder> beanDefinitionHolders =
                     findServiceBeanDefinitionHolders(scanner, packageToScan, registry, beanNameGenerator);
 
             if (!CollectionUtils.isEmpty(beanDefinitionHolders)) {
 
                 for (BeanDefinitionHolder beanDefinitionHolder : beanDefinitionHolders) {
+                    // 4. 将@Service注解的类，转为ServiceBean，并注册到spring上下文,
                     registerServiceBean(beanDefinitionHolder, registry, scanner);
                 }
 
@@ -204,6 +216,7 @@ public class ServiceAnnotationBeanPostProcessor implements BeanDefinitionRegistr
     }
 
     /**
+     * 找到所有@Service注解的类，封装成bdholder
      * Finds a {@link Set} of {@link BeanDefinitionHolder BeanDefinitionHolders} whose bean type annotated
      * {@link Service} Annotation.
      *
@@ -217,8 +230,10 @@ public class ServiceAnnotationBeanPostProcessor implements BeanDefinitionRegistr
             ClassPathBeanDefinitionScanner scanner, String packageToScan, BeanDefinitionRegistry registry,
             BeanNameGenerator beanNameGenerator) {
 
+        // 所有符合扫描条件的bean对应的beandefinition
         Set<BeanDefinition> beanDefinitions = scanner.findCandidateComponents(packageToScan);
 
+        // 包装成bdholder
         Set<BeanDefinitionHolder> beanDefinitionHolders = new LinkedHashSet<BeanDefinitionHolder>(beanDefinitions.size());
 
         for (BeanDefinition beanDefinition : beanDefinitions) {
@@ -234,7 +249,7 @@ public class ServiceAnnotationBeanPostProcessor implements BeanDefinitionRegistr
     }
 
     /**
-     * Registers {@link ServiceBean} from new annotated {@link Service} {@link BeanDefinition}
+     * 注册成 ServiceBean
      *
      * @param beanDefinitionHolder
      * @param registry
@@ -245,21 +260,26 @@ public class ServiceAnnotationBeanPostProcessor implements BeanDefinitionRegistr
     private void registerServiceBean(BeanDefinitionHolder beanDefinitionHolder, BeanDefinitionRegistry registry,
                                      DubboClassPathBeanDefinitionScanner scanner) {
 
+        // 从beholder拿到对应的class
         Class<?> beanClass = resolveClass(beanDefinitionHolder);
 
+        // 拿到@Service对象，可以拿到配置的属性值
         Service service = findAnnotation(beanClass, Service.class);
 
+        // 获取对应的接口
         Class<?> interfaceClass = resolveServiceInterfaceClass(beanClass, service);
 
         String annotatedServiceBeanName = beanDefinitionHolder.getBeanName();
 
+        // 将@Service注解转为ServiceBean的beandefinition
         AbstractBeanDefinition serviceBeanDefinition =
                 buildServiceBeanDefinition(service, interfaceClass, annotatedServiceBeanName);
 
         // ServiceBean Bean name
         String beanName = generateServiceBeanName(service, interfaceClass, annotatedServiceBeanName);
 
-        if (scanner.checkCandidate(beanName, serviceBeanDefinition)) { // check duplicated candidate bean
+        if (scanner.checkCandidate(beanName, serviceBeanDefinition)) { //检查重复的候选 bean
+            // 将每一个ServiceBean注册到spring上下文
             registry.registerBeanDefinition(beanName, serviceBeanDefinition);
 
             if (logger.isInfoEnabled()) {
@@ -360,6 +380,13 @@ public class ServiceAnnotationBeanPostProcessor implements BeanDefinitionRegistr
         return resolvedPackagesToScan;
     }
 
+    /**
+     * 每一个@Service 注解对应的类都封装成ServiceBean的bd，
+     * @param service
+     * @param interfaceClass
+     * @param annotatedServiceBeanName
+     * @return
+     */
     private AbstractBeanDefinition buildServiceBeanDefinition(Service service, Class<?> interfaceClass,
                                                               String annotatedServiceBeanName) {
 

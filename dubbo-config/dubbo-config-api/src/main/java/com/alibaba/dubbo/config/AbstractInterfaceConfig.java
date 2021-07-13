@@ -48,7 +48,7 @@ import java.util.Map;
  *
  * @export
  */
-public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
+public abstract class 锁AbstractInterfaceConfig extends AbstractMethodConfig {
 
     private static final long serialVersionUID = -1559314110797223229L;
 
@@ -167,13 +167,16 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
                 if (address == null || address.length() == 0) {
                     address = Constants.ANYHOST_VALUE;
                 }
+                // properties配置的注册中心覆盖
                 String sysaddress = System.getProperty("dubbo.registry.address");
                 if (sysaddress != null && sysaddress.length() > 0) {
                     address = sysaddress;
                 }
                 if (address.length() > 0 && !RegistryConfig.NO_AVAILABLE.equalsIgnoreCase(address)) {
                     Map<String, String> map = new HashMap<String, String>();
+                    // 把applicationConfig的所有值以kv形式存于map
                     appendParameters(map, application);
+                    // 把registerConfig的所有值以kv形式存于map
                     appendParameters(map, config);
                     map.put("path", RegistryService.class.getName());
                     map.put("dubbo", Version.getProtocolVersion());
@@ -185,12 +188,16 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
                         if (ExtensionLoader.getExtensionLoader(RegistryFactory.class).hasExtension("remote")) {
                             map.put("protocol", "remote");
                         } else {
+                            // 默认dubbo协议
                             map.put("protocol", "dubbo");
                         }
                     }
+                    // 将上面map转化成Url
                     List<URL> urls = UrlUtils.parseURLs(address, map);
                     for (URL url : urls) {
+                        // 将url的协议头转为parameter
                         url = url.addParameter(Constants.REGISTRY_KEY, url.getProtocol());
+                        // 重新设置url的协议头为register
                         url = url.setProtocol(Constants.REGISTRY_PROTOCOL);
                         if ((provider && url.getParameter(Constants.REGISTER_KEY, true))
                                 || (!provider && url.getParameter(Constants.SUBSCRIBE_KEY, true))) {
@@ -257,6 +264,11 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
         return null;
     }
 
+    /**
+     * 校验配置的接口及其method是否都存在
+     * @param interfaceClass
+     * @param methods
+     */
     protected void checkInterfaceAndMethods(Class<?> interfaceClass, List<MethodConfig> methods) {
         // interface cannot be null
         if (interfaceClass == null) {
@@ -317,7 +329,14 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
         }
     }
 
+    /**
+     * 校验Stub配置 Stub类
+     * 1. Stub类必须实现接口
+     * 2. Stub必须有一个构造函数，并且构造函数的第一个入参数接口类型
+     * @param interfaceClass
+     */
     void checkStub(Class<?> interfaceClass) {
+        // local 不用看
         if (ConfigUtils.isNotEmpty(local)) {
             Class<?> localClass = ConfigUtils.isDefault(local) ? ReflectUtils.forName(interfaceClass.getName() + "Local") : ReflectUtils.forName(local);
             if (!interfaceClass.isAssignableFrom(localClass)) {
@@ -335,6 +354,7 @@ public abstract class AbstractInterfaceConfig extends AbstractMethodConfig {
                 throw new IllegalStateException("The local implementation class " + localClass.getName() + " not implement interface " + interfaceClass.getName());
             }
             try {
+                // Stub类必须要有接口类型参数的构造方法（有且只能是第一个入参），反之报异常
                 ReflectUtils.findConstructor(localClass, interfaceClass);
             } catch (NoSuchMethodException e) {
                 throw new IllegalStateException("No such constructor \"public " + localClass.getSimpleName() + "(" + interfaceClass.getName() + ")\" in local implementation class " + localClass.getName());

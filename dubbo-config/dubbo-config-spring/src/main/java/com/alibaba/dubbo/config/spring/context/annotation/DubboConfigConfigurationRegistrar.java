@@ -43,6 +43,7 @@ public class DubboConfigConfigurationRegistrar implements ImportBeanDefinitionRe
         AnnotationAttributes attributes = AnnotationAttributes.fromMap(
                 importingClassMetadata.getAnnotationAttributes(EnableDubboConfig.class.getName()));
 
+        // 拿到EnableConfig注解的multiple属性
         boolean multiple = attributes.getBoolean("multiple");
 
         // Single Config Bindings

@@ -40,8 +40,10 @@ public class DubboClassPathBeanDefinitionScanner extends ClassPathBeanDefinition
     public DubboClassPathBeanDefinitionScanner(BeanDefinitionRegistry registry, boolean useDefaultFilters, Environment environment,
                                                ResourceLoader resourceLoader) {
 
+        // 必然需要依托父类的构造。因为最终还是要spring来做扫描
         super(registry, useDefaultFilters);
 
+        // 设置Env，dubbo需要用到环境变量
         setEnvironment(environment);
 
         setResourceLoader(resourceLoader);

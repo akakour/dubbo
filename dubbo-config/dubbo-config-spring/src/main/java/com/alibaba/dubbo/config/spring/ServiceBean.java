@@ -97,12 +97,18 @@ public class ServiceBean<T> extends ServiceConfig<T> implements InitializingBean
         return service;
     }
 
+    /**
+     * Springr容器refresh成功之后，发布ContextFreshEnevt事件，调用本方法服务暴露
+     * @param event
+     */
     @Override
     public void onApplicationEvent(ContextRefreshedEvent event) {
+        // spring加载完成以后，服务暴露，只会暴露延迟暴露的服务，非延迟的已经暴露过了
         if (isDelay() && !isExported() && !isUnexported()) {
             if (logger.isInfoEnabled()) {
                 logger.info("The service ready on spring started. service: " + getInterface());
             }
+            // 延迟暴露的暴露
             export();
         }
     }
@@ -116,12 +122,19 @@ public class ServiceBean<T> extends ServiceConfig<T> implements InitializingBean
         return supportedApplicationListener && (delay == null || delay == -1);
     }
 
+    /**
+     * ServiceBean的afterPropertiesSet 主要逻辑就是填充各种配置 RegisterConfig ProtocalCOnfig等
+     * @throws Exception
+     */
     @Override
     @SuppressWarnings({"unchecked", "deprecation"})
     public void afterPropertiesSet() throws Exception {
+        // 拿到Privider全局配置
         if (getProvider() == null) {
+            // 获取spring容器中的所有ProviderConfig实例
             Map<String, ProviderConfig> providerConfigMap = applicationContext == null ? null : BeanFactoryUtils.beansOfTypeIncludingAncestors(applicationContext, ProviderConfig.class, false, false);
             if (providerConfigMap != null && providerConfigMap.size() > 0) {
+                // 获取spring容器中所有的ProtocolConfig实例
                 Map<String, ProtocolConfig> protocolConfigMap = applicationContext == null ? null : BeanFactoryUtils.beansOfTypeIncludingAncestors(applicationContext, ProtocolConfig.class, false, false);
                 if ((protocolConfigMap == null || protocolConfigMap.size() == 0)
                         && providerConfigMap.size() > 1) { // backward compatibility
@@ -152,6 +165,7 @@ public class ServiceBean<T> extends ServiceConfig<T> implements InitializingBean
         }
         if (getApplication() == null
                 && (getProvider() == null || getProvider().getApplication() == null)) {
+            // 从spring上下文拿ApplicationConfig
             Map<String, ApplicationConfig> applicationConfigMap = applicationContext == null ? null : BeanFactoryUtils.beansOfTypeIncludingAncestors(applicationContext, ApplicationConfig.class, false, false);
             if (applicationConfigMap != null && applicationConfigMap.size() > 0) {
                 ApplicationConfig applicationConfig = null;
@@ -186,6 +200,7 @@ public class ServiceBean<T> extends ServiceConfig<T> implements InitializingBean
                 }
             }
         }
+        // 获取RegisterConfig
         if ((getRegistries() == null || getRegistries().isEmpty())
                 && (getProvider() == null || getProvider().getRegistries() == null || getProvider().getRegistries().isEmpty())
                 && (getApplication() == null || getApplication().getRegistries() == null || getApplication().getRegistries().isEmpty())) {
@@ -202,6 +217,7 @@ public class ServiceBean<T> extends ServiceConfig<T> implements InitializingBean
                 }
             }
         }
+        // 获取MonitorConfig
         if (getMonitor() == null
                 && (getProvider() == null || getProvider().getMonitor() == null)
                 && (getApplication() == null || getApplication().getMonitor() == null)) {
@@ -221,6 +237,7 @@ public class ServiceBean<T> extends ServiceConfig<T> implements InitializingBean
                 }
             }
         }
+        // 获取ProtocConfig
         if ((getProtocols() == null || getProtocols().isEmpty())
                 && (getProvider() == null || getProvider().getProtocols() == null || getProvider().getProtocols().isEmpty())) {
             Map<String, ProtocolConfig> protocolConfigMap = applicationContext == null ? null : BeanFactoryUtils.beansOfTypeIncludingAncestors(applicationContext, ProtocolConfig.class, false, false);
@@ -243,7 +260,9 @@ public class ServiceBean<T> extends ServiceConfig<T> implements InitializingBean
                 setPath(beanName);
             }
         }
+        // 是否延迟发布，默认不是延迟
         if (!isDelay()) {
+            // 暴露服务
             export();
         }
     }
@@ -259,16 +278,21 @@ public class ServiceBean<T> extends ServiceConfig<T> implements InitializingBean
     }
 
     /**
+     * 向注册中心 暴露服务
      * @since 2.6.5
      */
     @Override
     public void export() {
+        // 暴露
         super.export();
         // Publish ServiceBeanExportedEvent
+        // 发布事件，这个事件会被本服务实例的消费者消费，可以进行服务消费了
         publishExportEvent();
     }
 
     /**
+     *  发布一个 ServiceBeanExportedEvent 事件
+     *  注意的是，这个ServiceBeanExportedEvent 持有ServiceBean（this）
      * @since 2.6.5
      */
     private void publishExportEvent() {
