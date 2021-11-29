@@ -40,6 +40,13 @@ public class Transporters {
         return bind(URL.valueOf(url), handler);
     }
 
+    /**
+     *  dubbo服务端 绑定
+     * @param url
+     * @param handlers
+     * @return
+     * @throws RemotingException
+     */
     public static Server bind(URL url, ChannelHandler... handlers) throws RemotingException {
         if (url == null) {
             throw new IllegalArgumentException("url == null");
@@ -53,6 +60,7 @@ public class Transporters {
         } else {
             handler = new ChannelHandlerDispatcher(handlers);
         }
+        // 默认情况下，getTransporter得到的是 com.alibaba.dubbo.remoting.transport.netty4.NettyTransporter
         return getTransporter().bind(url, handler);
     }
 
@@ -60,6 +68,13 @@ public class Transporters {
         return connect(URL.valueOf(url), handler);
     }
 
+    /**
+     * dubbo客户端连接
+     * @param url
+     * @param handlers
+     * @return
+     * @throws RemotingException
+     */
     public static Client connect(URL url, ChannelHandler... handlers) throws RemotingException {
         if (url == null) {
             throw new IllegalArgumentException("url == null");
@@ -75,6 +90,10 @@ public class Transporters {
         return getTransporter().connect(url, handler);
     }
 
+    /**
+     *  获取默认的Transporter实现类 netty
+     * @return
+     */
     public static Transporter getTransporter() {
         return ExtensionLoader.getExtensionLoader(Transporter.class).getAdaptiveExtension();
     }

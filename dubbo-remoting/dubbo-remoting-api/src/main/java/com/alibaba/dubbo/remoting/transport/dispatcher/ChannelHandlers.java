@@ -31,6 +31,12 @@ public class ChannelHandlers {
     protected ChannelHandlers() {
     }
 
+    /**
+     * 对ChannelHandler链再次进行修饰
+     * @param handler
+     * @param url
+     * @return
+     */
     public static ChannelHandler wrap(ChannelHandler handler, URL url) {
         return ChannelHandlers.getInstance().wrapInternal(handler, url);
     }
@@ -43,6 +49,12 @@ public class ChannelHandlers {
         INSTANCE = instance;
     }
 
+    /**
+     * 从内到外分别加上了 AllChannelHandler，HeartbeatHandler，MultiMessageHandler
+     * @param handler
+     * @param url
+     * @return
+     */
     protected ChannelHandler wrapInternal(ChannelHandler handler, URL url) {
         return new MultiMessageHandler(new HeartbeatHandler(ExtensionLoader.getExtensionLoader(Dispatcher.class)
                 .getAdaptiveExtension().dispatch(handler, url)));

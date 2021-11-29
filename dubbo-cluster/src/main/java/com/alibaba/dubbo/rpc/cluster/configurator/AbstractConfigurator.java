@@ -49,13 +49,18 @@ public abstract class AbstractConfigurator implements Configurator {
         return configuratorUrl;
     }
 
+    /**
+     *  重新配置url
+     * @param url
+     * @return
+     */
     @Override
     public URL configure(URL url) {
         if (configuratorUrl == null || configuratorUrl.getHost() == null
                 || url == null || url.getHost() == null) {
             return url;
         }
-        // If override url has port, means it is a provider address. We want to control a specific provider with this override url, it may take effect on the specific provider instance or on consumers holding this provider instance.
+        // 如果覆盖 url 有端口，则意味着它是一个提供者地址。我们想用这个覆盖 url 控制一个特定的提供者，它可能对特定的提供者实例或持有这个提供者实例的消费者生效。
         if (configuratorUrl.getPort() != 0) {
             if (url.getPort() == configuratorUrl.getPort()) {
                 return configureIfMatch(url.getHost(), url);
@@ -63,8 +68,10 @@ public abstract class AbstractConfigurator implements Configurator {
         } else {// override url don't have a port, means the ip override url specify is a consumer address or 0.0.0.0
             // 1.If it is a consumer ip address, the intention is to control a specific consumer instance, it must takes effect at the consumer side, any provider received this override url should ignore;
             // 2.If the ip is 0.0.0.0, this override url can be used on consumer, and also can be used on provider
+            // 如果是消费端的override的时候，如果override的url ip是0.0.0.0，则所有的消费端都会重置；如果override不是0.0.0.0，则只有ip匹配的重置
             if (url.getParameter(Constants.SIDE_KEY, Constants.PROVIDER).equals(Constants.CONSUMER)) {
                 return configureIfMatch(NetUtils.getLocalHost(), url);// NetUtils.getLocalHost is the ip address consumer registered to registry.
+            // 如果是生产端的override的时候，所有的输出端都会重置
             } else if (url.getParameter(Constants.SIDE_KEY, Constants.CONSUMER).equals(Constants.PROVIDER)) {
                 return configureIfMatch(Constants.ANYHOST_VALUE, url);// take effect on all providers, so address must be 0.0.0.0, otherwise it won't flow to this if branch
             }
@@ -72,7 +79,14 @@ public abstract class AbstractConfigurator implements Configurator {
         return url;
     }
 
+    /**
+     * 有前提的重新配置url
+     * @param host
+     * @param url
+     * @return
+     */
     private URL configureIfMatch(String host, URL url) {
+        // override的url是0.0.0.0，或者和本地ip一致的时候
         if (Constants.ANYHOST_VALUE.equals(configuratorUrl.getHost()) || host.equals(configuratorUrl.getHost())) {
             String configApplication = configuratorUrl.getParameter(Constants.APPLICATION_KEY,
                     configuratorUrl.getUsername());
@@ -80,6 +94,7 @@ public abstract class AbstractConfigurator implements Configurator {
             if (configApplication == null || Constants.ANY_VALUE.equals(configApplication)
                     || configApplication.equals(currentApplication)) {
                 Set<String> conditionKeys = new HashSet<String>();
+                // 忽略不必要属性
                 conditionKeys.add(Constants.CATEGORY_KEY);
                 conditionKeys.add(Constants.CHECK_KEY);
                 conditionKeys.add(Constants.DYNAMIC_KEY);
@@ -95,6 +110,9 @@ public abstract class AbstractConfigurator implements Configurator {
                         }
                     }
                 }
+                /**
+                 * 触发 配置逻辑
+                 */
                 return doConfigure(url, configuratorUrl.removeParameters(conditionKeys));
             }
         }

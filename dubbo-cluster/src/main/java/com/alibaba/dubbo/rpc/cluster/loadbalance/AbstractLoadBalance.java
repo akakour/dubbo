@@ -35,12 +35,23 @@ public abstract class AbstractLoadBalance implements LoadBalance {
         return ww < 1 ? 1 : (ww > weight ? weight : ww);
     }
 
+    /**
+     * 根据负载均衡策略选择一个提供者
+     * @param invokers
+     * @param url
+     * @param invocation
+     * @param <T>
+     * @return
+     */
     @Override
     public <T> Invoker<T> select(List<Invoker<T>> invokers, URL url, Invocation invocation) {
         if (invokers == null || invokers.isEmpty())
             return null;
         if (invokers.size() == 1)
             return invokers.get(0);
+        /**
+         * 交由各个负载均衡策略选择
+         */
         return doSelect(invokers, url, invocation);
     }
 

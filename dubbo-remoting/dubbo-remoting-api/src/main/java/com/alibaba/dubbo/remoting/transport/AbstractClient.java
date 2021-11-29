@@ -69,6 +69,12 @@ public abstract class AbstractClient extends AbstractEndpoint implements Client 
     private long lastConnectedTime = System.currentTimeMillis();
 
 
+    /**
+     * dubbo客户端实例
+     * @param url
+     * @param handler
+     * @throws RemotingException
+     */
     public AbstractClient(URL url, ChannelHandler handler) throws RemotingException {
         super(url, handler);
 
@@ -80,6 +86,9 @@ public abstract class AbstractClient extends AbstractEndpoint implements Client 
         reconnect_warning_period = url.getParameter("reconnect.waring.period", 1800);
 
         try {
+            /**
+             * 开启dubbo客户端
+             */
             doOpen();
         } catch (Throwable t) {
             close();
@@ -88,7 +97,9 @@ public abstract class AbstractClient extends AbstractEndpoint implements Client 
                             + " connect to the server " + getRemoteAddress() + ", cause: " + t.getMessage(), t);
         }
         try {
-            // connect.
+            /**
+             * 创建dubbo客户端和服务端连接
+             */
             connect();
             if (logger.isInfoEnabled()) {
                 logger.info("Start " + getClass().getSimpleName() + " " + NetUtils.getLocalAddress() + " connect to the server " + getRemoteAddress());
@@ -118,6 +129,12 @@ public abstract class AbstractClient extends AbstractEndpoint implements Client 
         }
     }
 
+    /**
+     * 修饰客户单handler链
+     * @param url
+     * @param handler
+     * @return
+     */
     protected static ChannelHandler wrapChannelHandler(URL url, ChannelHandler handler) {
         url = ExecutorUtil.setThreadName(url, CLIENT_THREAD_POOL_NAME);
         url = url.addParameterIfAbsent(Constants.THREADPOOL_KEY, Constants.DEFAULT_CLIENT_THREADPOOL);
@@ -259,11 +276,22 @@ public abstract class AbstractClient extends AbstractEndpoint implements Client 
         return channel.hasAttribute(key);
     }
 
+    /**
+     * NettyClient的抽象类的send方法
+     *
+     * @param message
+     * @param sent
+     * @throws RemotingException
+     */
     @Override
     public void send(Object message, boolean sent) throws RemotingException {
         if (send_reconnect && !isConnected()) {
+            /**
+             * 核心 如果断开连接会重新创建连接
+             */
             connect();
         }
+        // 得到NettyChannel
         Channel channel = getChannel();
         //TODO Can the value returned by getChannel() be null? need improvement.
         if (channel == null || !channel.isConnected()) {
@@ -272,13 +300,22 @@ public abstract class AbstractClient extends AbstractEndpoint implements Client 
         channel.send(message, sent);
     }
 
+    /**
+     * 建立RPC连接
+     * @throws RemotingException
+     */
     protected void connect() throws RemotingException {
         connectLock.lock();
         try {
             if (isConnected()) {
+                // 如果这个nettyClient对应的channel已经connected，则不需要再次创建connection
                 return;
             }
             initConnectStatusCheckCommand();
+            /**
+             *  子类实现连接逻辑
+             *  netty时，直接调用netty客户端引导类.connect()
+             */
             doConnect();
             if (!isConnected()) {
                 throw new RemotingException(this, "Failed connect to server " + getRemoteAddress() + " from " + getClass().getSimpleName() + " "

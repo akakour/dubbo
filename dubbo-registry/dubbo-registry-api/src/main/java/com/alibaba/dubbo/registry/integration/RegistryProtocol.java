@@ -63,6 +63,7 @@ public class RegistryProtocol implements Protocol {
 
     private final static Logger logger = LoggerFactory.getLogger(RegistryProtocol.class);
     private static RegistryProtocol INSTANCE;
+    // 监听的协议和listener回调的映射
     private final Map<URL, NotifyListener> overrideListeners = new ConcurrentHashMap<URL, NotifyListener>();
     //To solve the problem of RMI repeated exposure port conflicts, the services that have been exposed are no longer exposed.
     //providerurl <--> exporter
@@ -124,42 +125,86 @@ public class RegistryProtocol implements Protocol {
         return overrideListeners;
     }
 
+    /**
+     *  将服务注册到 注册中心
+     * @param registryUrl  zookeeper://xxxx
+     * @param registedProviderUrl  dubbo://xxxx
+     */
     public void register(URL registryUrl, URL registedProviderUrl) {
+        // registerUrl是zookeeper协议所以拿到的是 ZookeeperRegister
         Registry registry = registryFactory.getRegistry(registryUrl);
+        // registedProviderUrl是dubbo协议
         registry.register(registedProviderUrl);
     }
 
+    /**
+     * register:// 协议的最终export逻辑
+     * @param originInvoker
+     * @param <T>
+     * @return
+     * @throws RpcException
+     */
     @Override
     public <T> Exporter<T> export(final Invoker<T> originInvoker) throws RpcException {
-        //export invoker
+        /**
+         *  本地暴露export
+         *  会开启本地netty服务端
+         *  这里流程比较长，spi的应用比较灵活
+         */
         final ExporterChangeableWrapper<T> exporter = doLocalExport(originInvoker);
 
+        // register:// 协议转为zookeeper://
         URL registryUrl = getRegistryUrl(originInvoker);
 
-        //registry provider
+        // 通过register协议的register参数拿到具体的 zookeeperRegistry
         final Registry registry = getRegistry(originInvoker);
+        // 生成最终要注册的dubbo:// 注册协议，清理了一些过程中用的参数，但是最终zk里面不需要
         final URL registeredProviderUrl = getRegisteredProviderUrl(originInvoker);
 
-        //to judge to delay publish whether or not
+        // 判断是否延迟发布
         boolean register = registeredProviderUrl.getParameter("register", true);
 
+        // 初始化服务调用关系表 全局变量
         ProviderConsumerRegTable.registerProvider(originInvoker, registryUrl, registeredProviderUrl);
 
         if (register) {
+            /**
+             * 往zookeeper的/dubbo/xxx.xxx.xxxInterface/providers下面建立临时节点。节点内容是 registeredProviderUrl
+             */
             register(registryUrl, registeredProviderUrl);
+            // 初始化服务注册成功
             ProviderConsumerRegTable.getProviderWrapper(originInvoker).setReg(true);
         }
 
         // Subscribe the override data
         // FIXME When the provider subscribes, it will affect the scene : a certain JVM exposes the service and call the same service. Because the subscribed is cached key with the name of the service, it causes the subscription information to cover.
+        /**
+         * Provider 订阅Configurators节点watcher
+         * url主要是根据category来判断 category=configurators
+         * provider://协议
+         */
         final URL overrideSubscribeUrl = getSubscribedOverrideUrl(registeredProviderUrl);
+        //绑定listener的关系
         final OverrideListener overrideSubscribeListener = new OverrideListener(overrideSubscribeUrl, originInvoker);
         overrideListeners.put(overrideSubscribeUrl, overrideSubscribeListener);
+        /**
+         * 核心 订阅。
+         * 这里有两次扭转：
+         *  最终： CuratorWatcherImpl.process() // 持有childlistener
+         *       -----> ChildListener.childChange() // 引用了OverrideListener  （ZookeeperRegistry#listeners）
+         *          ------> OverrideListener.notify()
+         */
         registry.subscribe(overrideSubscribeUrl, overrideSubscribeListener);
         //Ensure that a new exporter instance is returned every time export
         return new DestroyableExporter<T>(exporter, originInvoker, overrideSubscribeUrl, registeredProviderUrl);
     }
 
+    /**
+     * 本地暴露
+     * @param originInvoker
+     * @param <T>
+     * @return
+     */
     @SuppressWarnings("unchecked")
     private <T> ExporterChangeableWrapper<T> doLocalExport(final Invoker<T> originInvoker) {
         String key = getCacheKey(originInvoker);
@@ -169,6 +214,9 @@ public class RegistryProtocol implements Protocol {
                 exporter = (ExporterChangeableWrapper<T>) bounds.get(key);
                 if (exporter == null) {
                     final Invoker<?> invokerDelegete = new InvokerDelegete<T>(originInvoker, getProviderUrl(originInvoker));
+                    /**
+                     * 核心 这里会调用dubboProtocol.export从而开启本地netty服务端
+                     */
                     exporter = new ExporterChangeableWrapper<T>((Exporter<T>) protocol.export(invokerDelegete), originInvoker);
                     bounds.put(key, exporter);
                 }
@@ -178,7 +226,7 @@ public class RegistryProtocol implements Protocol {
     }
 
     /**
-     * Reexport the invoker of the modified url
+     * 用心的url数据 重新export
      *
      * @param originInvoker
      * @param newInvokerUrl
@@ -186,26 +234,37 @@ public class RegistryProtocol implements Protocol {
     @SuppressWarnings("unchecked")
     private <T> void doChangeLocalExport(final Invoker<T> originInvoker, URL newInvokerUrl) {
         String key = getCacheKey(originInvoker);
+        // 取得原来invoke的包装类
         final ExporterChangeableWrapper<T> exporter = (ExporterChangeableWrapper<T>) bounds.get(key);
         if (exporter == null) {
             logger.warn(new IllegalStateException("error state, exporter should not be null"));
         } else {
             final Invoker<T> invokerDelegete = new InvokerDelegete<T>(originInvoker, newInvokerUrl);
+            /**
+             * 生成invoke链，替换原来的invoke链
+             */
             exporter.setExporter(protocol.export(invokerDelegete));
         }
     }
 
     /**
-     * Get an instance of registry based on the address of invoker
+     * 根据调用者地址获取registry实例
      *
      * @param originInvoker
      * @return
      */
     private Registry getRegistry(final Invoker<?> originInvoker) {
+        // register协议转为具体的zookeeper://
         URL registryUrl = getRegistryUrl(originInvoker);
+        // 根据具体的zookeeper:// 拿到ZookeeperRegistry
         return registryFactory.getRegistry(registryUrl);
     }
 
+    /**
+     * 从register://。。。？register=zookeeper 转成zookeeper://。。。。。？
+     * @param originInvoker
+     * @return
+     */
     private URL getRegistryUrl(Invoker<?> originInvoker) {
         URL registryUrl = originInvoker.getUrl();
         if (Constants.REGISTRY_PROTOCOL.equals(registryUrl.getProtocol())) {
@@ -269,24 +328,38 @@ public class RegistryProtocol implements Protocol {
         return key;
     }
 
+    /**
+     *  register:// 协议的最终refer引用逻辑
+     * @param type
+     * @param url
+     * @param <T>
+     * @return
+     * @throws RpcException
+     */
     @Override
     @SuppressWarnings("unchecked")
     public <T> Invoker<T> refer(Class<T> type, URL url) throws RpcException {
         url = url.setProtocol(url.getParameter(Constants.REGISTRY_KEY, Constants.DEFAULT_REGISTRY)).removeParameter(Constants.REGISTRY_KEY);
         Registry registry = registryFactory.getRegistry(url);
         if (RegistryService.class.equals(type)) {
+            // 如果被引用接口是RegisteyService接口,则直接生成register接口的代理invoker
             return proxyFactory.getInvoker((T) registry, type, url);
         }
 
         // group="a,b" or group="*"
         Map<String, String> qs = StringUtils.parseQueryString(url.getParameterAndDecoded(Constants.REFER_KEY));
         String group = qs.get(Constants.GROUP_KEY);
+        // 多group的场合
         if (group != null && group.length() > 0) {
             if ((Constants.COMMA_SPLIT_PATTERN.split(group)).length > 1
                     || "*".equals(group)) {
                 return doRefer(getMergeableCluster(), registry, type, url);
             }
         }
+        /**
+         * 核心
+         * 这里的cluster是在registerprotocol实例的时候，被di注入的（dubbo api机制）,具体注入的是 FailoverCluster
+         */
         return doRefer(cluster, registry, type, url);
     }
 
@@ -294,6 +367,15 @@ public class RegistryProtocol implements Protocol {
         return ExtensionLoader.getExtensionLoader(Cluster.class).getExtension("mergeable");
     }
 
+    /**
+     * register协议的具体refer逻辑
+     * @param cluster com.alibaba.dubbo.rpc.cluster.support.FailoverCluster的wrapper链
+     * @param registry com.alibaba.dubbo.registry.zookeeper.ZookeeperRegistry
+     * @param type 引用接口类型
+     * @param url dubbo协议的url
+     * @param <T>
+     * @return
+     */
     private <T> Invoker<T> doRefer(Cluster cluster, Registry registry, Class<T> type, URL url) {
         RegistryDirectory<T> directory = new RegistryDirectory<T>(type, url);
         directory.setRegistry(registry);
@@ -304,14 +386,23 @@ public class RegistryProtocol implements Protocol {
         if (!Constants.ANY_VALUE.equals(url.getServiceInterface())
                 && url.getParameter(Constants.REGISTER_KEY, true)) {
             URL registeredConsumerUrl = getRegisteredConsumerUrl(subscribeUrl, url);
+            /**
+             * 核心 往zk的consunmers节点下创建临时节点
+             */
             registry.register(registeredConsumerUrl);
             directory.setRegisteredConsumerUrl(registeredConsumerUrl);
         }
+        /**
+         * 核心 监听【Configurators，routers，providers】三大节点的数据监听
+         */
         directory.subscribe(subscribeUrl.addParameter(Constants.CATEGORY_KEY,
                 Constants.PROVIDERS_CATEGORY
                         + "," + Constants.CONFIGURATORS_CATEGORY
                         + "," + Constants.ROUTERS_CATEGORY));
 
+        /**
+         * 核心 创建调用端的最终invoker链实例对象
+         */
         Invoker invoker = cluster.join(directory);
         ProviderConsumerRegTable.registerConsumer(invoker, url, subscribeUrl, directory);
         return invoker;
@@ -369,6 +460,7 @@ public class RegistryProtocol implements Protocol {
         }
 
         /**
+         *  override协议、empty协议的覆盖逻辑
          * @param urls The list of registered information , is always not empty, The meaning is the same as the return value of {@link com.alibaba.dubbo.registry.RegistryService#lookup(URL)}.
          */
         @Override
@@ -381,6 +473,7 @@ public class RegistryProtocol implements Protocol {
                 return;
             }
 
+            // 根据override url生成覆盖用的Configurator对象
             List<Configurator> configurators = RegistryDirectory.toConfigurators(matchedUrls);
 
             final Invoker<?> invoker;
@@ -389,7 +482,7 @@ public class RegistryProtocol implements Protocol {
             } else {
                 invoker = originInvoker;
             }
-            //The origin invoker
+            //根据原始invoke拿到原始url
             URL originUrl = RegistryProtocol.this.getProviderUrl(invoker);
             String key = getCacheKey(originInvoker);
             ExporterChangeableWrapper<?> exporter = bounds.get(key);
@@ -397,11 +490,17 @@ public class RegistryProtocol implements Protocol {
                 logger.warn(new IllegalStateException("error state, exporter should not be null"));
                 return;
             }
-            //The current, may have been merged many times
+            //拿到当前url 旧数据
             URL currentUrl = exporter.getInvoker().getUrl();
-            //Merged with this configuration
+            /**
+             * 将新的override协议的url中的参数合并到原来的当前url中
+             */
             URL newUrl = getConfigedInvokerUrl(configurators, originUrl);
+            // 不相等 说明url数据有变更
             if (!currentUrl.equals(newUrl)) {
+                /**
+                 *  完成Configurator节点变革逻辑，重新生成新url对应被ExporterChangeableWrapper包装的export
+                 */
                 RegistryProtocol.this.doChangeLocalExport(originInvoker, newUrl);
                 logger.info("exported provider url changed, origin url: " + originUrl + ", old export url: " + currentUrl + ", new export url: " + newUrl);
             }
@@ -425,7 +524,12 @@ public class RegistryProtocol implements Protocol {
             return result;
         }
 
-        //Merge the urls of configurators
+        /**
+         * 合并配置的 url
+         * @param configurators  OverrideConfigurators
+         * @param url 原来的url
+         * @return
+         */
         private URL getConfigedInvokerUrl(List<Configurator> configurators, URL url) {
             for (Configurator configurator : configurators) {
                 url = configurator.configure(url);

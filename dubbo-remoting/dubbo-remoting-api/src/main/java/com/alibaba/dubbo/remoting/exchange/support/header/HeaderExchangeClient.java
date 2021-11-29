@@ -180,6 +180,9 @@ public class HeaderExchangeClient implements ExchangeClient {
         return channel.hasAttribute(key);
     }
 
+    /**
+     * 开启客户端心跳
+     */
     private void startHeartbeatTimer() {
         stopHeartbeatTimer();
         if (heartbeat > 0) {

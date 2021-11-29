@@ -122,6 +122,12 @@ public abstract class AbstractInvoker<T> implements Invoker<T> {
         return getInterface() + " -> " + (getUrl() == null ? "" : getUrl().toString());
     }
 
+    /**
+     *  invoker抽象类的invoke
+     * @param inv
+     * @return
+     * @throws RpcException
+     */
     @Override
     public Result invoke(Invocation inv) throws RpcException {
         // if invoker is destroyed due to address refresh from registry, let's allow the current invoke to proceed
@@ -135,6 +141,9 @@ public abstract class AbstractInvoker<T> implements Invoker<T> {
         if (attachment != null && attachment.size() > 0) {
             invocation.addAttachmentsIfAbsent(attachment);
         }
+        /**
+         * 在发起dubbo调用前，如果通过RpcContext.getContext().setXX了一些附属信息，这里会被设置到invocation
+         */
         Map<String, String> contextAttachments = RpcContext.getContext().getAttachments();
         if (contextAttachments != null && contextAttachments.size() != 0) {
             /**
@@ -145,15 +154,21 @@ public abstract class AbstractInvoker<T> implements Invoker<T> {
              */
             invocation.addAttachments(contextAttachments);
         }
+        // 是否是异步调用，默认同步
         if (getUrl().getMethodParameter(invocation.getMethodName(), Constants.ASYNC_KEY, false)) {
             invocation.setAttachment(Constants.ASYNC_KEY, Boolean.TRUE.toString());
         }
+        // 给url里面设置自定义的属性
         RpcUtils.attachInvocationIdIfAsync(getUrl(), invocation);
 
-
         try {
+            /**
+             * 核心 交给子类去调用 一般都是DubboInvoker
+             */
             return doInvoke(invocation);
-        } catch (InvocationTargetException e) { // biz exception
+        } catch (InvocationTargetException e) {
+            //invoke异常
+            // biz exception
             Throwable te = e.getTargetException();
             if (te == null) {
                 return new RpcResult(e);
@@ -164,6 +179,7 @@ public abstract class AbstractInvoker<T> implements Invoker<T> {
                 return new RpcResult(te);
             }
         } catch (RpcException e) {
+            // RPC异常
             if (e.isBiz()) {
                 return new RpcResult(e);
             } else {

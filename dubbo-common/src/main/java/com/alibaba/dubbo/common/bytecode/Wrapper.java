@@ -99,17 +99,27 @@ public abstract class Wrapper {
         while (ClassGenerator.isDynamicClass(c)) // can not wrapper on dynamic class.
             c = c.getSuperclass();
 
+        // 如果被包装类是Object.class
         if (c == Object.class)
             return OBJECT_WRAPPER;
 
+        // 如果被包装类是普通类
         Wrapper ret = WRAPPER_MAP.get(c);
         if (ret == null) {
+            /**
+             * 关键 生成wapper类，硬编码生成代理
+             */
             ret = makeWrapper(c);
             WRAPPER_MAP.put(c, ret);
         }
         return ret;
     }
 
+    /**
+     * 生成接口实例的包装类，包装类的内容是硬编码
+     * @param c
+     * @return
+     */
     private static Wrapper makeWrapper(Class<?> c) {
         if (c.isPrimitive())
             throw new IllegalArgumentException("Can not create wrapper for primitive type: " + c);

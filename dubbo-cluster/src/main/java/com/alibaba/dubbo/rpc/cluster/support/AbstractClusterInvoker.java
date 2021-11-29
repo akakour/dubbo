@@ -94,12 +94,12 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
     }
 
     /**
-     * Select a invoker using loadbalance policy.</br>
-     * a)Firstly, select an invoker using loadbalance. If this invoker is in previously selected list, or, 
-     * if this invoker is unavailable, then continue step b (reselect), otherwise return the first selected invoker</br>
-     * b)Reslection, the validation rule for reselection: selected > available. This rule guarantees that
-     * the selected invoker has the minimum chance to be one in the previously selected list, and also 
-     * guarantees this invoker is available.
+     * 使用负载平衡策略选择调用者.</br>
+     * a)首先，使用负载平衡选择一个调用者。如果此调用者在先前选择的列表中，或者，
+     * 如果此调用者不可用，则继续步骤 b（重新选择），否则返回第一个选择的调用者</br>
+     * b）Reslection，重选的验证规则：selected > available。此规则保证
+     * 选定的调用者有最小机会成为先前选定的列表中的一个，并且
+     * 保证此调用者可用
      *
      * @param loadbalance load balance policy
      * @param invocation
@@ -113,6 +113,9 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
             return null;
         String methodName = invocation == null ? "" : invocation.getMethodName();
 
+        /**
+         * 粘性调用。表明，最优先调用已经调用过的提供者，为了稳定性考虑
+         */
         boolean sticky = invokers.get(0).getUrl().getMethodParameter(methodName, Constants.CLUSTER_STICKY_KEY, Constants.DEFAULT_CLUSTER_STICKY);
         {
             //ignore overloaded method
@@ -126,6 +129,9 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
                 }
             }
         }
+        /**
+         * 具体的选择策略
+         */
         Invoker<T> invoker = doSelect(loadbalance, invocation, invokers, selected);
 
         if (sticky) {
@@ -134,6 +140,16 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
         return invoker;
     }
 
+    /**
+     * 根据负载均衡策略选择一个服务提供者进行调用
+     *
+     * @param loadbalance
+     * @param invocation
+     * @param invokers
+     * @param selected
+     * @return
+     * @throws RpcException
+     */
     private Invoker<T> doSelect(LoadBalance loadbalance, Invocation invocation, List<Invoker<T>> invokers, List<Invoker<T>> selected) throws RpcException {
         if (invokers == null || invokers.isEmpty())
             return null;
@@ -148,6 +164,9 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
         if ((selected != null && selected.contains(invoker))
                 || (!invoker.isAvailable() && getUrl() != null && availablecheck)) {
             try {
+                /**
+                 * 如果选中的invoker是selected或者unavailable、availablecheck，则重新选择
+                 */
                 Invoker<T> rinvoker = reselect(loadbalance, invocation, invokers, selected, availablecheck);
                 if (rinvoker != null) {
                     invoker = rinvoker;
@@ -169,7 +188,7 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
     }
 
     /**
-     * Reselect, use invokers not in `selected` first, if all invokers are in `selected`, just pick an available one using loadbalance policy.
+     * 重新选择，首先使用不在“selected”中的调用者，如果所有调用者都在“selected”中，只需使用负载平衡策略选择一个可用的调用者
      *
      * @param loadbalance
      * @param invocation
@@ -224,23 +243,40 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
         return null;
     }
 
+    /**
+     * 消费端 集群策略的invoke调用
+     * 根据不同的集群容错策略调用具体的子类
+     * @param invocation
+     * @return
+     * @throws RpcException
+     */
     @Override
     public Result invoke(final Invocation invocation) throws RpcException {
         checkWhetherDestroyed();
         LoadBalance loadbalance = null;
 
         // binding attachments into invocation.
+        // 绑定调用前线程上下文变量 可以通过  RpcContext.getContext().setAttachment("key","value")来设定，完成跨线程变量传递
         Map<String, String> contextAttachments = RpcContext.getContext().getAttachments();
         if (contextAttachments != null && contextAttachments.size() != 0) {
             ((RpcInvocation) invocation).addAttachments(contextAttachments);
         }
 
+        /**
+         * 核心 获取被调用方法的invoke列表（通常一个提供者一个invoke）
+         */
         List<Invoker<T>> invokers = list(invocation);
         if (invokers != null && !invokers.isEmpty()) {
+            /**
+             * 核心 获取负载均衡策略
+             */
             loadbalance = ExtensionLoader.getExtensionLoader(LoadBalance.class).getExtension(invokers.get(0).getUrl()
                     .getMethodParameter(RpcUtils.getMethodName(invocation), Constants.LOADBALANCE_KEY, Constants.DEFAULT_LOADBALANCE));
         }
         RpcUtils.attachInvocationIdIfAsync(getUrl(), invocation);
+        /**
+         * 核心 调用具体的集群策略 发起RPC远程调用
+         */
         return doInvoke(invocation, invokers, loadbalance);
     }
 
@@ -273,6 +309,12 @@ public abstract class AbstractClusterInvoker<T> implements Invoker<T> {
     protected abstract Result doInvoke(Invocation invocation, List<Invoker<T>> invokers,
                                        LoadBalance loadbalance) throws RpcException;
 
+    /**
+     * 获取该接口方法对应的服务提供者invoker
+     * @param invocation
+     * @return
+     * @throws RpcException
+     */
     protected List<Invoker<T>> list(Invocation invocation) throws RpcException {
         List<Invoker<T>> invokers = directory.list(invocation);
         return invokers;

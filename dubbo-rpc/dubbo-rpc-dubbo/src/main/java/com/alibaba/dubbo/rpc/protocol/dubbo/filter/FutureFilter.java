@@ -37,7 +37,7 @@ import java.lang.reflect.Method;
 import java.util.concurrent.Future;
 
 /**
- * EventFilter
+ * 事件过滤器
  */
 @Activate(group = Constants.CONSUMER)
 public class FutureFilter implements Filter {
@@ -49,12 +49,23 @@ public class FutureFilter implements Filter {
         final boolean isAsync = RpcUtils.isAsync(invoker.getUrl(), invocation);
 
         fireInvokeCallback(invoker, invocation);
-        // need to configure if there's return value before the invocation in order to help invoker to judge if it's
-        // necessary to return future.
+        /**
+         * 发起DubboInvoker调用
+         * 这里有可能是堵塞调用（同步）
+         * 也有可能是非堵塞调用（异步）
+         */
         Result result = invoker.invoke(invocation);
         if (isAsync) {
+            /**
+             * 异步调用
+             * 会在这里future get达到堵塞
+             */
             asyncCallback(invoker, invocation);
         } else {
+            /**
+             * 同步调用
+             * 已经有result了
+             */
             syncCallback(invoker, invocation, result);
         }
         return result;

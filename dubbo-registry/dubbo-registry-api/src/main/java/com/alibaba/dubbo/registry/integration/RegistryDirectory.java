@@ -114,8 +114,8 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     }
 
     /**
-     * Convert override urls to map for use when re-refer.
-     * Send all rules every time, the urls will be reassembled and calculated
+     * 将覆盖 url 转换为映射以供重新引用时使用。
+     * 每次发送所有规则，url将重新组合和计算
      *
      * @param urls Contract:
      *             </br>1.override://0.0.0.0/...( or override://ip:port...?anyhost=true)&para1=value1... means global rules (all of the providers take effect)
@@ -131,6 +131,7 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
 
         List<Configurator> configurators = new ArrayList<Configurator>(urls.size());
         for (URL url : urls) {
+            // 如果有empty协议，则清空。消费端启动，服务端没有的情况下，消费端一启动就会手动调用notify()，但是是empty协议
             if (Constants.EMPTY_PROTOCOL.equals(url.getProtocol())) {
                 configurators.clear();
                 break;
@@ -192,6 +193,10 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
         }
     }
 
+    /**
+     *  消费端服务列表更新监听
+     * @param urls The list of registered information , is always not empty. The meaning is the same as the return value of {@link com.alibaba.dubbo.registry.RegistryService#lookup(URL)}.
+     */
     @Override
     public synchronized void notify(List<URL> urls) {
         List<URL> invokerUrls = new ArrayList<URL>();
@@ -202,11 +207,16 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
             String category = url.getParameter(Constants.CATEGORY_KEY, Constants.DEFAULT_CATEGORY);
             if (Constants.ROUTERS_CATEGORY.equals(category)
                     || Constants.ROUTE_PROTOCOL.equals(protocol)) {
+                // routers目录更新，全量更新
                 routerUrls.add(url);
             } else if (Constants.CONFIGURATORS_CATEGORY.equals(category)
                     || Constants.OVERRIDE_PROTOCOL.equals(protocol)) {
+                // configurators 目录全量更新
                 configuratorUrls.add(url);
             } else if (Constants.PROVIDERS_CATEGORY.equals(category)) {
+                /**
+                 * providers 目录全量更新
+                 */
                 invokerUrls.add(url);
             } else {
                 logger.warn("Unsupported category " + category + " in notified url: " + url + " from registry " + getUrl().getAddress() + " to consumer " + NetUtils.getLocalHost());
@@ -236,10 +246,10 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     }
 
     /**
-     * Convert the invokerURL list to the Invoker Map. The rules of the conversion are as follows:
-     * 1.If URL has been converted to invoker, it is no longer re-referenced and obtained directly from the cache, and notice that any parameter changes in the URL will be re-referenced.
-     * 2.If the incoming invoker list is not empty, it means that it is the latest invoker list
-     * 3.If the list of incoming invokerUrl is empty, It means that the rule is only a override rule or a route rule, which needs to be re-contrasted to decide whether to re-reference.
+     * 将 invokerURL 列表转换为 Invoker Map。转换规则如下：
+     * 1.如果 URL 已经转换为 invoker，则不再重新引用并直接从缓存中获取，并更新invoker的参数。
+     * 2.如果传入的调用者列表不为空，则表示它是最新的调用者列表
+     * 3.如果传入的invokerUrl列表为空，则表示该规则只是override规则或路由规则，需要重新对比来决定是否重新引用。
      *
      * @param invokerUrls this parameter can't be null
      */
@@ -247,6 +257,7 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     private void refreshInvoker(List<URL> invokerUrls) {
         if (invokerUrls != null && invokerUrls.size() == 1 && invokerUrls.get(0) != null
                 && Constants.EMPTY_PROTOCOL.equals(invokerUrls.get(0).getProtocol())) {
+            // empty:// 协议的场合，只会发生在消费者刚刚启动之后，还没有订阅服务，先全局发送一个empty：//协议，清空所有的invoke映射，然后暂时禁止rpc调用
             this.forbidden = true; // Forbid to access
             this.methodInvokerMap = null; // Set the method invoker map to null
             destroyAllInvokers(); // Close all invokers
@@ -262,7 +273,13 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
             if (invokerUrls.isEmpty()) {
                 return;
             }
-            Map<String, Invoker<T>> newUrlInvokerMap = toInvokers(invokerUrls);// Translate url list to Invoker map
+            /**
+             * 核心 建立该接口的url和invoker的映射 全量
+             */
+            Map<String, Invoker<T>> newUrlInvokerMap = toInvokers(invokerUrls);// 将 url 列表转换为 Invoker 映射
+            /**
+             * 建立方法和invoker的映射
+             */
             Map<String, List<Invoker<T>>> newMethodInvokerMap = toMethodInvokers(newUrlInvokerMap); // Change method name to map Invoker Map
             // state change
             // If the calculation is wrong, it is not processed.
@@ -270,9 +287,11 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
                 logger.error(new IllegalStateException("urls to invokers error .invokerUrls.size :" + invokerUrls.size() + ", invoker.size :0. urls :" + invokerUrls.toString()));
                 return;
             }
+            // 新旧合并
             this.methodInvokerMap = multiGroup ? toMergeMethodInvokerMap(newMethodInvokerMap) : newMethodInvokerMap;
             this.urlInvokerMap = newUrlInvokerMap;
             try {
+                // 剔除无效的服务提供者
                 destroyUnusedInvokers(oldUrlInvokerMap, newUrlInvokerMap); // Close the unused Invoker
             } catch (Exception e) {
                 logger.warn("destroyUnusedInvokers error. ", e);
@@ -342,7 +361,7 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     }
 
     /**
-     * Turn urls into invokers, and if url has been refer, will not re-reference.
+     * 将 url 转为调用者，如果 url 已被引用，则不会重新引用。
      *
      * @param urls
      * @return invokers
@@ -354,6 +373,7 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
         }
         Set<String> keys = new HashSet<String>();
         String queryProtocols = this.queryMap.get(Constants.PROTOCOL_KEY);
+        // 遍历提供者
         for (URL providerUrl : urls) {
             // If protocol is configured at the reference side, only the matching protocol is selected
             if (queryProtocols != null && queryProtocols.length() > 0) {
@@ -369,6 +389,7 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
                     continue;
                 }
             }
+            // empty协议的场合，直接跳过
             if (Constants.EMPTY_PROTOCOL.equals(providerUrl.getProtocol())) {
                 continue;
             }
@@ -377,6 +398,7 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
                         + ", supported protocol: " + ExtensionLoader.getExtensionLoader(Protocol.class).getSupportedExtensions()));
                 continue;
             }
+            // 合并参数 顺序是 override > -D >Consumer > Provider
             URL url = mergeUrl(providerUrl);
 
             String key = url.toFullString(); // The parameter urls are sorted
@@ -385,10 +407,11 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
             }
             keys.add(key);
             // Cache key is url that does not merge with consumer side parameters, regardless of how the consumer combines parameters, if the server url changes, then refer again
-            Map<String, Invoker<T>> localUrlInvokerMap = this.urlInvokerMap; // local reference
+            Map<String, Invoker<T>> localUrlInvokerMap = this.urlInvokerMap; // 本地缓存
             Invoker<T> invoker = localUrlInvokerMap == null ? null : localUrlInvokerMap.get(key);
             if (invoker == null) { // Not in the cache, refer again
                 try {
+                    // 是否可用，可有override协议控制，或者直接dubbo admin控制台控制
                     boolean enabled = true;
                     if (url.hasParameter(Constants.DISABLED_KEY)) {
                         enabled = !url.getParameter(Constants.DISABLED_KEY, false);
@@ -396,6 +419,11 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
                         enabled = url.getParameter(Constants.ENABLED_KEY, true);
                     }
                     if (enabled) {
+                        /**
+                         * 核心： 消费端的invoke过滤链的生成。
+                         * 会触发dubboprotocol.refer() 进而创建netty客户端
+                         * 最终链式封装成InvokerDelegate实例，调用的时候，直接调用InvokerDelegate内部的invoker.invoke
+                         */
                         invoker = new InvokerDelegate<T>(protocol.refer(serviceType, url), url, providerUrl);
                     }
                 } catch (Throwable t) {
@@ -413,7 +441,7 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
     }
 
     /**
-     * Merge url parameters. the order is: override > -D >Consumer > Provider
+     * 合并 url 参数。顺序是: override > -D >Consumer > Provider
      *
      * @param providerUrl
      * @return
@@ -498,6 +526,7 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
                 invokersList.add(invoker);
             }
         }
+        // 根据路由规则 过滤
         List<Invoker<T>> newInvokersList = route(invokersList, null);
         newMethodInvokerMap.put(Constants.ANY_VALUE, newInvokersList);
         if (serviceMethods != null && serviceMethods.length > 0) {
@@ -506,6 +535,7 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
                 if (methodInvokers == null || methodInvokers.isEmpty()) {
                     methodInvokers = newInvokersList;
                 }
+                // 路由规则过滤
                 newMethodInvokerMap.put(method, route(methodInvokers, method));
             }
         }
@@ -581,6 +611,11 @@ public class RegistryDirectory<T> extends AbstractDirectory<T> implements Notify
         }
     }
 
+    /**
+     * 获取该接口方法相关的所有服务提供者执行器列表
+     * @param invocation
+     * @return
+     */
     @Override
     public List<Invoker<T>> doList(Invocation invocation) {
         if (forbidden) {

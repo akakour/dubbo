@@ -80,6 +80,11 @@ public abstract class AbstractRegistryFactory implements RegistryFactory {
         }
     }
 
+    /**
+     * 从 registerFactory得到具体的Registry （ZookeeperRegistry）
+     * @param url
+     * @return
+     */
     @Override
     public Registry getRegistry(URL url) {
         url = url.setPath(RegistryService.class.getName())
@@ -93,6 +98,7 @@ public abstract class AbstractRegistryFactory implements RegistryFactory {
             if (registry != null) {
                 return registry;
             }
+            // 创建 具体的 Register实现 一般是ZookeeperRegistry。根据url的registry节点属性来判断
             registry = createRegistry(url);
             if (registry == null) {
                 throw new IllegalStateException("Can not create registry " + url);

@@ -29,6 +29,12 @@ public class OverrideConfigurator extends AbstractConfigurator {
         super(url);
     }
 
+    /**
+     *  Override监听 重新配置url
+     * @param currentUrl
+     * @param configUrl
+     * @return
+     */
     @Override
     public URL doConfigure(URL currentUrl, URL configUrl) {
         return currentUrl.addParameters(configUrl.getParameters());

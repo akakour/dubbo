@@ -64,6 +64,12 @@ public class DubboInvoker<T> extends AbstractInvoker<T> {
         this.invokers = invokers;
     }
 
+    /**
+     * 客户端具体的调用逻辑
+     * @param invocation
+     * @return
+     * @throws Throwable
+     */
     @Override
     protected Result doInvoke(final Invocation invocation) throws Throwable {
         RpcInvocation inv = (RpcInvocation) invocation;
@@ -81,17 +87,27 @@ public class DubboInvoker<T> extends AbstractInvoker<T> {
             boolean isAsync = RpcUtils.isAsync(getUrl(), invocation);
             boolean isOneway = RpcUtils.isOneway(getUrl(), invocation);
             int timeout = getUrl().getMethodParameter(methodName, Constants.TIMEOUT_KEY, Constants.DEFAULT_TIMEOUT);
+            /**
+             * 单工通信，isReturn=false. 只负责发送不需要返回值
+             */
             if (isOneway) {
                 boolean isSent = getUrl().getMethodParameter(methodName, Constants.SENT_KEY, false);
                 currentClient.send(inv, isSent);
                 RpcContext.getContext().setFuture(null);
+                // 返回空result
                 return new RpcResult();
             } else if (isAsync) {
+                /**
+                 * 异步通信 设置一个future对象给上下文，在外层的FutureFilter手动get，将会在FutureFilter#invoke中堵塞
+                 */
                 ResponseFuture future = currentClient.request(inv, timeout);
                 RpcContext.getContext().setFuture(new FutureAdapter<Object>(future));
                 return new RpcResult();
             } else {
                 RpcContext.getContext().setFuture(null);
+                /**
+                 * 同步堵塞拿取feature的结果。手动get  直接在这里堵塞
+                 */
                 return (Result) currentClient.request(inv, timeout).get();
             }
         } catch (TimeoutException e) {

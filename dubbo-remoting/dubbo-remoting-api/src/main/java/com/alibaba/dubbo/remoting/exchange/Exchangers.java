@@ -59,6 +59,13 @@ public class Exchangers {
         return bind(URL.valueOf(url), handler);
     }
 
+    /**
+     * 绑定 url和 exchangeHandler，开启netty服务端
+     * @param url
+     * @param handler
+     * @return
+     * @throws RemotingException
+     */
     public static ExchangeServer bind(URL url, ExchangeHandler handler) throws RemotingException {
         if (url == null) {
             throw new IllegalArgumentException("url == null");
@@ -67,6 +74,8 @@ public class Exchangers {
             throw new IllegalArgumentException("handler == null");
         }
         url = url.addParameterIfAbsent(Constants.CODEC_KEY, "exchange");
+
+        // 默认是 HeaderExchanger
         return getExchanger(url).bind(url, handler);
     }
 
@@ -98,6 +107,13 @@ public class Exchangers {
         return connect(URL.valueOf(url), handler);
     }
 
+    /**
+     * 创建dubbo 远程RPC调用客户端
+     * @param url
+     * @param handler
+     * @return
+     * @throws RemotingException
+     */
     public static ExchangeClient connect(URL url, ExchangeHandler handler) throws RemotingException {
         if (url == null) {
             throw new IllegalArgumentException("url == null");
@@ -106,6 +122,7 @@ public class Exchangers {
             throw new IllegalArgumentException("handler == null");
         }
         url = url.addParameterIfAbsent(Constants.CODEC_KEY, "exchange");
+        // spi机制
         return getExchanger(url).connect(url, handler);
     }
 

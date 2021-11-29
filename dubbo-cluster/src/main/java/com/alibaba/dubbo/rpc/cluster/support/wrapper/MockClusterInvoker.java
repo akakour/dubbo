@@ -65,22 +65,37 @@ public class MockClusterInvoker<T> implements Invoker<T> {
         return directory.getInterface();
     }
 
+    /**
+     * Mock 调用
+     * 如果是mock的场合，按照mock规则调用
+     * 反之，调用FailOverClusterIncoke
+     * @param invocation
+     * @return
+     * @throws RpcException
+     */
     @Override
     public Result invoke(Invocation invocation) throws RpcException {
         Result result = null;
 
         String value = directory.getUrl().getMethodParameter(invocation.getMethodName(), Constants.MOCK_KEY, Boolean.FALSE.toString()).trim();
         if (value.length() == 0 || value.equalsIgnoreCase("false")) {
-            //no mock
+            /**
+             * 不是 mock
+             */
             result = this.invoker.invoke(invocation);
         } else if (value.startsWith("force")) {
             if (logger.isWarnEnabled()) {
                 logger.info("force-mock: " + invocation.getMethodName() + " force-mock enabled , url : " + directory.getUrl());
             }
-            //force:direct mock
+            /**
+             * force:direct mock
+             * 直接熔断，不发起rpc调用直接调用mock
+             */
             result = doMockInvoke(invocation, null);
         } else {
-            //fail-mock
+            /**
+             * fail-mock 降级
+             */
             try {
                 result = this.invoker.invoke(invocation);
             } catch (RpcException e) {
@@ -90,6 +105,7 @@ public class MockClusterInvoker<T> implements Invoker<T> {
                     if (logger.isWarnEnabled()) {
                         logger.warn("fail-mock: " + invocation.getMethodName() + " fail-mock enabled , url : " + directory.getUrl(), e);
                     }
+                    // rpc调用失败时，才会触发降级mock
                     result = doMockInvoke(invocation, e);
                 }
             }
@@ -97,6 +113,12 @@ public class MockClusterInvoker<T> implements Invoker<T> {
         return result;
     }
 
+    /**
+     * 根据mock规则调用本地mock
+     * @param invocation
+     * @param e
+     * @return
+     */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private Result doMockInvoke(Invocation invocation, RpcException e) {
         Result result = null;

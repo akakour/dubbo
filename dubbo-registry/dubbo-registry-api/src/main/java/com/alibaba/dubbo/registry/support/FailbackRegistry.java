@@ -127,13 +127,20 @@ public abstract class FailbackRegistry extends AbstractRegistry {
         }
     }
 
+    /**
+     * 注册服务
+     * @param url
+     */
     @Override
     public void register(URL url) {
+        // 只是建立一个缓存
         super.register(url);
         failedRegistered.remove(url);
         failedUnregistered.remove(url);
         try {
-            // Sending a registration request to the server side
+            /**
+             *  核心 向服务器端发送注册请求 写了一个临时节点，并建立了notify监听
+             */
             doRegister(url);
         } catch (Exception e) {
             Throwable t = e;
@@ -187,12 +194,19 @@ public abstract class FailbackRegistry extends AbstractRegistry {
         }
     }
 
+    /**
+     * 注册 watcher
+     * @param url
+     * @param listener
+     */
     @Override
     public void subscribe(URL url, NotifyListener listener) {
         super.subscribe(url, listener);
         removeFailedSubscribed(url, listener);
         try {
-            // Sending a subscription request to the server side
+            /**
+             *  向服务器端发送订阅请求
+             */
             doSubscribe(url, listener);
         } catch (Exception e) {
             Throwable t = e;
@@ -254,6 +268,12 @@ public abstract class FailbackRegistry extends AbstractRegistry {
         }
     }
 
+    /**
+     * 创建监听器
+     * @param url
+     * @param listener
+     * @param urls
+     */
     @Override
     protected void notify(URL url, NotifyListener listener, List<URL> urls) {
         if (url == null) {
@@ -263,6 +283,9 @@ public abstract class FailbackRegistry extends AbstractRegistry {
             throw new IllegalArgumentException("notify listener == null");
         }
         try {
+            /**
+             * 创建监听器
+             */
             doNotify(url, listener, urls);
         } catch (Exception t) {
             // Record a failed registration request to a failed list, retry regularly

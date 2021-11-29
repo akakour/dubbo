@@ -29,6 +29,13 @@ import com.alibaba.dubbo.rpc.proxy.InvokerInvocationHandler;
  */
 public class JavassistProxyFactory extends AbstractProxyFactory {
 
+    /**
+     * 生成 javaassist 代理
+     * @param invoker
+     * @param interfaces
+     * @param <T>
+     * @return
+     */
     @Override
     @SuppressWarnings("unchecked")
     public <T> T getProxy(Invoker<T> invoker, Class<?>[] interfaces) {
@@ -46,7 +53,8 @@ public class JavassistProxyFactory extends AbstractProxyFactory {
     @Override
     public <T> Invoker<T> getInvoker(T proxy, Class<T> type, URL url) {
         // TODO Wrapper cannot handle this scenario correctly: the classname contains '$'
-        // javassist技术生成目标对应的包装类，实际上自定义接口的话，一般不会写wapper类。那就是直接就是接口的实现类
+        // javassist技术生成目标对应的包装类，实际上本wrapper并没有什么具体逻辑，只是dubbo为了统一代码而做的一层抽象，
+        // wrapper里面有一个invokemethod的方法代理了被代理方法
         final Wrapper wrapper = Wrapper.getWrapper(proxy.getClass().getName().indexOf('$') < 0 ? proxy.getClass() : type);
         // AbstractProxyInvoker是目标服务的包装类，doInvoke可以调用目标类的方法
         return new AbstractProxyInvoker<T>(proxy, type, url) {

@@ -42,6 +42,9 @@ final class HeartBeatTask implements Runnable {
         this.heartbeatTimeout = heartbeatTimeout;
     }
 
+    /**
+     * 心跳
+     */
     @Override
     public void run() {
         try {
@@ -57,10 +60,12 @@ final class HeartBeatTask implements Runnable {
                             HeaderExchangeHandler.KEY_WRITE_TIMESTAMP);
                     if ((lastRead != null && now - lastRead > heartbeat)
                             || (lastWrite != null && now - lastWrite > heartbeat)) {
+                        // 心跳包
                         Request req = new Request();
                         req.setVersion(Version.getProtocolVersion());
                         req.setTwoWay(true);
                         req.setEvent(Request.HEARTBEAT_EVENT);
+                        // 发送心跳
                         channel.send(req);
                         if (logger.isDebugEnabled()) {
                             logger.debug("Send heartbeat to remote channel " + channel.getRemoteAddress()

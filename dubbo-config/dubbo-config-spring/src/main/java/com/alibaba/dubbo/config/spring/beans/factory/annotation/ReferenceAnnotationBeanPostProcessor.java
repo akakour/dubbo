@@ -120,39 +120,67 @@ public class ReferenceAnnotationBeanPostProcessor extends AnnotationInjectedBean
         // 创建beanname
         String referencedBeanName = buildReferencedBeanName(reference, injectedType);
 
-        // 将@Reference注入对象封装成RefernceBean
+        // 将@Reference注入对象封装成RefernceBean  注意的是referencebean并没有放入spring容器
         ReferenceBean referenceBean = buildReferenceBeanIfAbsent(referencedBeanName, reference, injectedType, getClassLoader());
 
         // 缓存
         cacheInjectedReferenceBean(referenceBean, injectedElement);
 
         /**
-         * 核心 生成远程RPC调用代理类
+         * 核心 生成远程RPC调用代理类 是个JDK动态代理
+         * 所以，当调用引用类的方法时，
+         *     会调用到ReferenceBeanInvocationHandler的invoke方法，进而调用到referenceBean的get方法等
          */
         Object proxy = buildProxy(referencedBeanName, referenceBean, injectedType);
 
         return proxy;
     }
 
+    /**
+     * 生成rpc动态代理  典型的jdk动态代理
+     * @param referencedBeanName
+     * @param referenceBean
+     * @param injectedType
+     * @return
+     */
     private Object buildProxy(String referencedBeanName, ReferenceBean referenceBean, Class<?> injectedType) {
+        // handler
         InvocationHandler handler = buildInvocationHandler(referencedBeanName, referenceBean);
         Object proxy = Proxy.newProxyInstance(getClassLoader(), new Class[]{injectedType}, handler);
         return proxy;
     }
 
+    /**
+     * 创建  reference 的jdk代理的invocationhandler
+     * @param referencedBeanName
+     * @param referenceBean
+     * @return
+     */
     private InvocationHandler buildInvocationHandler(String referencedBeanName, ReferenceBean referenceBean) {
 
         ReferenceBeanInvocationHandler handler = localReferenceBeanInvocationHandlerCache.get(referencedBeanName);
 
         if (handler == null) {
+            /**
+             * @Reference 注入的是一个ReferenceBeanInvocationHandler的jdk代理对象。关键直接看ReferenceBeanInvocationHandler.invoke
+             */
             handler = new ReferenceBeanInvocationHandler(referenceBean);
         }
 
+        /**
+         * 理论上
+         * 1. XML形式的dubbo的reference 的bean，既可以@Autowried也可以@Reference注入。这个是因为xml形式bean会被解析成BD，从而被实例化，再被DI引用，所以会存在Spring上下文
+         * 2. 注解版的dubbo，只能@Reference注入dubbo引用，不能@Autowried,因为，reference bean不会存在spring上下文中，会直接getObject得到代理类。
+         */
+        // xml形式的dubbo，有可能是在上下文中
         if (applicationContext.containsBean(referencedBeanName)) { // Is local @Service Bean or not ?
             // ReferenceBeanInvocationHandler's initialization has to wait for current local @Service Bean has been exported.
             localReferenceBeanInvocationHandlerCache.put(referencedBeanName, handler);
         } else {
-            // Remote Reference Bean should initialize immediately
+            /**
+             * 基本都是这里
+             * 远程引用 Bean 应立即初始化
+             */
             handler.init();
         }
 
@@ -169,6 +197,14 @@ public class ReferenceAnnotationBeanPostProcessor extends AnnotationInjectedBean
             this.referenceBean = referenceBean;
         }
 
+        /**
+         * reference dubbo服务调用时的jdk代理invoke
+         * @param proxy
+         * @param method
+         * @param args
+         * @return
+         * @throws Throwable
+         */
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             Object result = null;
@@ -185,6 +221,9 @@ public class ReferenceAnnotationBeanPostProcessor extends AnnotationInjectedBean
             return result;
         }
 
+        /**
+         * ref 引用bean的初始化。基本是建立rpc连接，创建调用链等
+         */
         private void init() {
             this.bean = referenceBean.get();
         }

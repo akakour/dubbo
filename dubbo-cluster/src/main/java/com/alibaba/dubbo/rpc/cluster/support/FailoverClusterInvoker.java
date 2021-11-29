@@ -36,8 +36,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * When invoke fails, log the initial error and retry other invokers (retry n times, which means at most n different invokers will be invoked)
- * Note that retry causes latency.
+ * 当调用失败时，记录初始错误并重试其他调用程序（重试 n 次，这意味着最多会调用 n 个不同的调用程序）
+ * 注意重试会导致延迟。
  * <p>
  * <a href="http://en.wikipedia.org/wiki/Failover">Failover</a>
  *
@@ -50,12 +50,21 @@ public class FailoverClusterInvoker<T> extends AbstractClusterInvoker<T> {
         super(directory);
     }
 
+    /**
+     *  Failover 消费端集群容错调用
+     * @param invocation
+     * @param invokers
+     * @param loadbalance
+     * @return
+     * @throws RpcException
+     */
     @Override
     @SuppressWarnings({"unchecked", "rawtypes"})
     public Result doInvoke(Invocation invocation, final List<Invoker<T>> invokers, LoadBalance loadbalance) throws RpcException {
         List<Invoker<T>> copyinvokers = invokers;
         checkInvokers(copyinvokers, invocation);
         String methodName = RpcUtils.getMethodName(invocation);
+        // 重试回数 默认重试2次，总得调用3次
         int len = getUrl().getMethodParameter(methodName, Constants.RETRIES_KEY, Constants.DEFAULT_RETRIES) + 1;
         if (len <= 0) {
             len = 1;
@@ -67,16 +76,28 @@ public class FailoverClusterInvoker<T> extends AbstractClusterInvoker<T> {
         for (int i = 0; i < len; i++) {
             //Reselect before retry to avoid a change of candidate `invokers`.
             //NOTE: if `invokers` changed, then `invoked` also lose accuracy.
+            // 如果是retry了，还会显示再取得一个invoke列表缓存，一定程度确保实时性
             if (i > 0) {
                 checkWhetherDestroyed();
                 copyinvokers = list(invocation);
                 // check again
                 checkInvokers(copyinvokers, invocation);
             }
+            /**
+             * 核心 根据负载均衡算法选择一个提供者调用
+             */
             Invoker<T> invoker = select(loadbalance, invocation, copyinvokers, invoked);
+            // 已经被调用过
             invoked.add(invoker);
+            // threadlocol共享
             RpcContext.getContext().setInvokers((List) invoked);
             try {
+                /**
+                 * 核心 发起RPC调用。
+                 * 触发的dubbo协议的消费端调用过滤链
+                 * 会触发nettyclient的创建
+                 * invoke： ComsumerContextFilter->FutureFilter->MoniterFilter->DubboInvoker
+                 */
                 Result result = invoker.invoke(invocation);
                 if (le != null && logger.isWarnEnabled()) {
                     logger.warn("Although retry the method " + invocation.getMethodName()

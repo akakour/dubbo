@@ -286,6 +286,11 @@ public abstract class AbstractRegistry implements Registry {
         registered.remove(url);
     }
 
+    /**
+     * 订阅前的准备工作
+     * @param url
+     * @param listener
+     */
     @Override
     public void subscribe(URL url, NotifyListener listener) {
         if (url == null) {
@@ -297,8 +302,10 @@ public abstract class AbstractRegistry implements Registry {
         if (logger.isInfoEnabled()) {
             logger.info("Subscribe: " + url);
         }
+        // 拿到 监听的url的监听器
         Set<NotifyListener> listeners = subscribed.get(url);
         if (listeners == null) {
+            // 创建url和监听器容器
             subscribed.putIfAbsent(url, new ConcurrentHashSet<NotifyListener>());
             listeners = subscribed.get(url);
         }
@@ -401,6 +408,7 @@ public abstract class AbstractRegistry implements Registry {
         if (result.size() == 0) {
             return;
         }
+        // 获取缓存中该接口的override协议的list
         Map<String, List<URL>> categoryNotified = notified.get(url);
         if (categoryNotified == null) {
             notified.putIfAbsent(url, new ConcurrentHashMap<String, List<URL>>());
@@ -409,8 +417,13 @@ public abstract class AbstractRegistry implements Registry {
         for (Map.Entry<String, List<URL>> entry : result.entrySet()) {
             String category = entry.getKey();
             List<URL> categoryList = entry.getValue();
+            // 新的override覆盖老数据
             categoryNotified.put(category, categoryList);
+            // 将最新数据缓存到系统临时文件中
             saveProperties(url);
+            /**
+             *  事件触发OverrideListener的notify
+             */
             listener.notify(categoryList);
         }
     }

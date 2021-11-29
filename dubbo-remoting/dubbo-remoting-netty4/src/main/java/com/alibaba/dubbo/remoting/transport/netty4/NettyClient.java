@@ -55,6 +55,10 @@ public class NettyClient extends AbstractClient {
         super(url, wrapChannelHandler(url, handler));
     }
 
+    /**
+     * 创建netty客户端实例
+     * @throws Throwable
+     */
     @Override
     protected void doOpen() throws Throwable {
         final NettyClientHandler nettyClientHandler = new NettyClientHandler(getUrl(), this);
@@ -85,9 +89,16 @@ public class NettyClient extends AbstractClient {
         });
     }
 
+    /**
+     * 进行netty客户端连接
+     * @throws Throwable
+     */
     @Override
     protected void doConnect() throws Throwable {
         long start = System.currentTimeMillis();
+        /**
+         * 调用netty api
+         */
         ChannelFuture future = bootstrap.connect(getConnectAddress());
         try {
             boolean ret = future.awaitUninterruptibly(getConnectTimeout(), TimeUnit.MILLISECONDS);
@@ -97,6 +108,7 @@ public class NettyClient extends AbstractClient {
                 try {
                     // Close old channel
                     Channel oldChannel = NettyClient.this.channel; // copy reference
+                    // 关闭旧channel
                     if (oldChannel != null) {
                         try {
                             if (logger.isInfoEnabled()) {
@@ -104,6 +116,7 @@ public class NettyClient extends AbstractClient {
                             }
                             oldChannel.close();
                         } finally {
+                            // 从channel列表移除旧channel
                             NettyChannel.removeChannelIfDisconnected(oldChannel);
                         }
                     }
@@ -119,6 +132,9 @@ public class NettyClient extends AbstractClient {
                             NettyChannel.removeChannelIfDisconnected(newChannel);
                         }
                     } else {
+                        /**
+                         * 一个nettyClient对应一个channel
+                         */
                         NettyClient.this.channel = newChannel;
                     }
                 }

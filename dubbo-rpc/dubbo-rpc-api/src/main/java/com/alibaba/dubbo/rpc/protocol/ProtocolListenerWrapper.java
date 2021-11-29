@@ -49,21 +49,43 @@ public class ProtocolListenerWrapper implements Protocol {
         return protocol.getDefaultPort();
     }
 
+    /**
+     * Protocol接口实现都会走wrapper
+     * @param invoker
+     * @param <T>
+     * @return
+     * @throws RpcException
+     */
     @Override
     public <T> Exporter<T> export(Invoker<T> invoker) throws RpcException {
+        // register:// 协议
         if (Constants.REGISTRY_PROTOCOL.equals(invoker.getUrl().getProtocol())) {
             return protocol.export(invoker);
         }
+        // 非register:// 协议，包装一层ListenerExporterWrapper是一个ExporterListener，可以监听export和unexport，dubbo内部没有具体实现，是一个扩展
+        // 自定义服务暴露之后的扩展点，类比于spring事务的事务提交前 提交后等埋点
         return new ListenerExporterWrapper<T>(protocol.export(invoker),
                 Collections.unmodifiableList(ExtensionLoader.getExtensionLoader(ExporterListener.class)
                         .getActivateExtension(invoker.getUrl(), Constants.EXPORTER_LISTENER_KEY)));
     }
 
+    /**
+     *  protocol调用refer方法，修饰类部分最末一个节点是lisntener节点
+     *  其实 dubbo框架方面并没有实现lisntener的具体逻辑，
+     *    算是预留的一个扩展点，可以用来监听dubbo协议往zk注册成功之后的回调
+     * @param type
+     * @param url
+     * @param <T>
+     * @return
+     * @throws RpcException
+     */
     @Override
     public <T> Invoker<T> refer(Class<T> type, URL url) throws RpcException {
+        // register:// 协议直接调用下一个节点 registerprotocol.refer
         if (Constants.REGISTRY_PROTOCOL.equals(url.getProtocol())) {
             return protocol.refer(type, url);
         }
+        // dubbo:// 协议则在调用dubboprotocol.refer之后在包装一个listner的包装类，用于回调用
         return new ListenerInvokerWrapper<T>(protocol.refer(type, url),
                 Collections.unmodifiableList(
                         ExtensionLoader.getExtensionLoader(InvokerListener.class)

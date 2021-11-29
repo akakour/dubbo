@@ -29,6 +29,7 @@ public class ZookeeperRegistryFactory extends AbstractRegistryFactory {
 
     private ZookeeperTransporter zookeeperTransporter;
 
+    // zookeeperTransporter会在本类实例化的时候注入  注入的是ZookeeperTransporter接口默认的实现类CuratorZookeeperTransporter
     public void setZookeeperTransporter(ZookeeperTransporter zookeeperTransporter) {
         this.zookeeperTransporter = zookeeperTransporter;
     }

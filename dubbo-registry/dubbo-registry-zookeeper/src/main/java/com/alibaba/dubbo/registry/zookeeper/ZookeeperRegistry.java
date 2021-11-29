@@ -57,6 +57,7 @@ public class ZookeeperRegistry extends FailbackRegistry {
     private final ZookeeperClient zkClient;
 
     public ZookeeperRegistry(URL url, ZookeeperTransporter zookeeperTransporter) {
+        // 会触发notify 配置刷新
         super(url);
         if (url.isAnyHost()) {
             throw new IllegalStateException("registry address == null");
@@ -66,7 +67,9 @@ public class ZookeeperRegistry extends FailbackRegistry {
             group = Constants.PATH_SEPARATOR + group;
         }
         this.root = group;
+        // 这里会调用到ZookeeperTransporter接口的spi，即默认实现类是CuratorZookeeperTransporter
         zkClient = zookeeperTransporter.connect(url);
+        // 先绑定了一个状态恢复的监听器，用于断续重连 recover。
         zkClient.addStateListener(new StateListener() {
             @Override
             public void stateChanged(int state) {
@@ -108,9 +111,16 @@ public class ZookeeperRegistry extends FailbackRegistry {
         }
     }
 
+    /**
+     * 通过zkclient向zk注册服务
+     * @param url
+     */
     @Override
     protected void doRegister(URL url) {
         try {
+            /**
+             * 核心 这里的zkclient是一个抽象层，屏蔽了不同zkclient的操作。
+             */
             zkClient.create(toUrlPath(url), url.getParameter(Constants.DYNAMIC_KEY, true));
         } catch (Throwable e) {
             throw new RpcException("Failed to register " + url + " to zookeeper " + getUrl() + ", cause: " + e.getMessage(), e);
@@ -126,9 +136,15 @@ public class ZookeeperRegistry extends FailbackRegistry {
         }
     }
 
+    /**
+     * 执行 节点数据监听
+     * @param url
+     * @param listener
+     */
     @Override
     protected void doSubscribe(final URL url, final NotifyListener listener) {
         try {
+            // 接口是*，基本上不可能。
             if (Constants.ANY_VALUE.equals(url.getServiceInterface())) {
                 String root = toRootPath();
                 ConcurrentMap<NotifyListener, ChildListener> listeners = zkListeners.get(url);
@@ -165,28 +181,48 @@ public class ZookeeperRegistry extends FailbackRegistry {
                 }
             } else {
                 List<URL> urls = new ArrayList<URL>();
+                // 遍历 需要监听的节点
                 for (String path : toCategoriesPath(url)) {
+
                     ConcurrentMap<NotifyListener, ChildListener> listeners = zkListeners.get(url);
                     if (listeners == null) {
+                        // 全局变量zkListeners中创建一个 NotifyListener（dubbo中真正数据变更后的逻辑处理） 和 ChildListener（之间扭结） 的映射
                         zkListeners.putIfAbsent(url, new ConcurrentHashMap<NotifyListener, ChildListener>());
                         listeners = zkListeners.get(url);
                     }
                     ChildListener zkListener = listeners.get(listener);
                     if (zkListener == null) {
+                        /**
+                         * 核心 创建 OverrideListener 和 childListener的映射。
+                         * 当zkclient监听到节点变更，会触发childlistenr的childChanged()，进而调用到OverrideListener的notify()执行dubbo逻辑
+                         */
                         listeners.putIfAbsent(listener, new ChildListener() {
+                            //zkclient监听到节点变更，会触发childlistenr的childChanged()
                             @Override
                             public void childChanged(String parentPath, List<String> currentChilds) {
+                                // 持有OverrideListener
                                 ZookeeperRegistry.this.notify(url, listener, toUrlsWithEmpty(url, parentPath, currentChilds));
                             }
                         });
+                        //zkListener就是上面的内部类ChildListener
                         zkListener = listeners.get(listener);
                     }
+                    // 创建configurators等持久节点，会判断有无，有则不创建
                     zkClient.create(path, false);
+                    /**
+                     *  核心 创建这是的zk监听器
+                     *  这里的zkListener是上面的ChildListener，path是监听目标节点
+                     *  - 这里核心就是建立了curator的watcher ，CuratorWatcherImpl和ChildListner的映射，
+                     *     当CuratorWatcherImpl监听到【path】的数据变更时，会触发ChildLisnter的childchange方法，即上面的内部类的逻辑。
+                     */
                     List<String> children = zkClient.addChildListener(path, zkListener);
                     if (children != null) {
                         urls.addAll(toUrlsWithEmpty(url, path, children));
                     }
                 }
+                /**
+                 * 把provider:// 转为empty:// ,完成初始化
+                 */
                 notify(url, listener, urls);
             }
         } catch (Throwable e) {

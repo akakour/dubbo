@@ -65,6 +65,10 @@ public class NettyServer extends AbstractServer implements Server {
         super(url, ChannelHandlers.wrap(handler, ExecutorUtil.setThreadName(url, SERVER_THREAD_POOL_NAME)));
     }
 
+    /**
+     * 开启netty4 服务端
+     * @throws Throwable
+     */
     @Override
     protected void doOpen() throws Throwable {
         bootstrap = new ServerBootstrap();
@@ -73,6 +77,9 @@ public class NettyServer extends AbstractServer implements Server {
         workerGroup = new NioEventLoopGroup(getUrl().getPositiveParameter(Constants.IO_THREADS_KEY, Constants.DEFAULT_IO_THREADS),
                 new DefaultThreadFactory("NettyServerWorker", true));
 
+        /**
+         * NettyServerHandler 持有dubbo invoke链 ChannelHandler
+         */
         final NettyServerHandler nettyServerHandler = new NettyServerHandler(getUrl(), this);
         channels = nettyServerHandler.getChannels();
 
@@ -86,9 +93,12 @@ public class NettyServer extends AbstractServer implements Server {
                     protected void initChannel(NioSocketChannel ch) throws Exception {
                         NettyCodecAdapter adapter = new NettyCodecAdapter(getCodec(), getUrl(), NettyServer.this);
                         ch.pipeline()//.addLast("logging",new LoggingHandler(LogLevel.INFO))//for debug
-                                .addLast("decoder", adapter.getDecoder())
-                                .addLast("encoder", adapter.getEncoder())
-                                .addLast("handler", nettyServerHandler);
+                                .addLast("decoder", adapter.getDecoder())  // 解码器
+                                .addLast("encoder", adapter.getEncoder())  // 编码器
+                                /**
+                                 * 核心： 将会把dubbo的调用处理链与netty的入站pipeline耦合
+                                 */
+                                .addLast("handler", nettyServerHandler);   // 核心业务处理
                     }
                 });
         // bind

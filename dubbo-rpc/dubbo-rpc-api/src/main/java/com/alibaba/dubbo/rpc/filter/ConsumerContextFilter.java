@@ -29,13 +29,21 @@ import com.alibaba.dubbo.rpc.RpcInvocation;
 import com.alibaba.dubbo.rpc.RpcResult;
 
 /**
- * ConsumerContextInvokerFilter
+ * 消费者上下文过滤器
  */
 @Activate(group = Constants.CONSUMER, order = -10000)
 public class ConsumerContextFilter implements Filter {
 
+    /**
+     * 调用方上下文过滤invoke
+     * @param invoker
+     * @param invocation
+     * @return
+     * @throws RpcException
+     */
     @Override
     public Result invoke(Invoker<?> invoker, Invocation invocation) throws RpcException {
+        // 将本次调用的元数据存放在theadlocol中
         RpcContext.getContext()
                 .setInvoker(invoker)
                 .setInvocation(invocation)
@@ -46,6 +54,7 @@ public class ConsumerContextFilter implements Filter {
             ((RpcInvocation) invocation).setInvoker(invoker);
         }
         try {
+            // 发起下一个调用 得到rpc调用结果
             RpcResult result = (RpcResult) invoker.invoke(invocation);
             RpcContext.getServerContext().setAttachments(result.getAttachments());
             return result;

@@ -62,6 +62,11 @@ public abstract class AbstractZookeeperClient<TargetChildListener> implements Zo
     }
 
 
+    /**
+     * 创建zk节点
+     * @param path
+     * @param ephemeral
+     */
     @Override
     public void create(String path, boolean ephemeral) {
         if (!ephemeral) {
@@ -75,11 +80,14 @@ public abstract class AbstractZookeeperClient<TargetChildListener> implements Zo
         }
         int i = path.lastIndexOf('/');
         if (i > 0) {
+            // 递归，如果多path的场合。先进行/dubbo/xxxService/xx持久节点的创建，然后进行provider下面临时节点的创建
             create(path.substring(0, i), false);
         }
         if (ephemeral) {
+            // 临时节点
             createEphemeral(path);
         } else {
+            // 持久节点
             createPersistent(path);
             persistentExistNodePath.add(path);
 
@@ -100,15 +108,23 @@ public abstract class AbstractZookeeperClient<TargetChildListener> implements Zo
         return stateListeners;
     }
 
+    /**
+     *  核心 创建这是的zk监听器
+     */
     @Override
     public List<String> addChildListener(String path, final ChildListener listener) {
+        /**
+         * 这里的 TargetChildListener 是CuratorWatcher
+         */
         ConcurrentMap<ChildListener, TargetChildListener> listeners = childListeners.get(path);
         if (listeners == null) {
             childListeners.putIfAbsent(path, new ConcurrentHashMap<ChildListener, TargetChildListener>());
             listeners = childListeners.get(path);
         }
+        // targetListener实际就是 CuratorWatcher 即CuratorWatcherImpl
         TargetChildListener targetListener = listeners.get(listener);
         if (targetListener == null) {
+            // 如果没有则创建一个path的CuratorWatcherImpl
             listeners.putIfAbsent(listener, createTargetChildListener(path, listener));
             targetListener = listeners.get(listener);
         }

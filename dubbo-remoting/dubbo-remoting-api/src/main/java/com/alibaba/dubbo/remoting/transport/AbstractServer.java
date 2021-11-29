@@ -47,6 +47,12 @@ public abstract class AbstractServer extends AbstractEndpoint implements Server 
     private int accepts;
     private int idleTimeout = 600; //600 seconds
 
+    /**
+     * 创建 server端
+     * @param url
+     * @param handler
+     * @throws RemotingException
+     */
     public AbstractServer(URL url, ChannelHandler handler) throws RemotingException {
         super(url, handler);
         localAddress = getUrl().toInetSocketAddress();
@@ -60,6 +66,9 @@ public abstract class AbstractServer extends AbstractEndpoint implements Server 
         this.accepts = url.getParameter(Constants.ACCEPTS_KEY, Constants.DEFAULT_ACCEPTS);
         this.idleTimeout = url.getParameter(Constants.IDLE_TIMEOUT_KEY, Constants.DEFAULT_IDLE_TIMEOUT);
         try {
+            /**
+             * 核心 开启netty服务端
+             */
             doOpen();
             if (logger.isInfoEnabled()) {
                 logger.info("Start " + getClass().getSimpleName() + " bind " + getBindAddress() + ", export " + getLocalAddress());

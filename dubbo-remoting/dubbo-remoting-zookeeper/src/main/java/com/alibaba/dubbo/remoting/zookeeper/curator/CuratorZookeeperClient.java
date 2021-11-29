@@ -72,9 +72,18 @@ public class CuratorZookeeperClient extends AbstractZookeeperClient<CuratorWatch
         }
     }
 
+    /**
+     * 持久节点
+     *  /dubbo/xx.xxx.xxx.XXXService/
+     *  [configurators, consumers, providers, routers]
+     *  四大持久节点的创建
+     *
+     * @param path
+     */
     @Override
     public void createPersistent(String path) {
         try {
+            // CuratorFramework具体api的使用
             client.create().forPath(path);
         } catch (NodeExistsException e) {
         } catch (Exception e) {
@@ -82,9 +91,17 @@ public class CuratorZookeeperClient extends AbstractZookeeperClient<CuratorWatch
         }
     }
 
+    /**
+     * 临时节点创建
+     * .../providers/dubbo://xxxxxx
+     * 的具体某个服务提供者的dubbo协议节点的临时创建，一旦给服务提供者下线，该节点就会销毁。
+     *
+     * @param path
+     */
     @Override
     public void createEphemeral(String path) {
         try {
+            // CuratorFramework具体api的使用
             client.create().withMode(CreateMode.EPHEMERAL).forPath(path);
         } catch (NodeExistsException e) {
         } catch (Exception e) {
@@ -138,9 +155,13 @@ public class CuratorZookeeperClient extends AbstractZookeeperClient<CuratorWatch
         return new CuratorWatcherImpl(listener);
     }
 
+    /**
+     *  核心 zk监听器
+     */
     @Override
     public List<String> addTargetChildListener(String path, CuratorWatcher listener) {
         try {
+            // 监听节点
             return client.getChildren().usingWatcher(listener).forPath(path);
         } catch (NoNodeException e) {
             return null;
@@ -166,15 +187,24 @@ public class CuratorZookeeperClient extends AbstractZookeeperClient<CuratorWatch
             this.listener = null;
         }
 
+        /**
+         * curator 的zk 节点watcher逻辑，会触发process
+         * @param event
+         * @throws Exception
+         */
         @Override
         public void process(WatchedEvent event) throws Exception {
             if (listener != null) {
                 String path = event.getPath() == null ? "" : event.getPath();
+                /**
+                 * 这里的listener就是ChildListener，所以会会调到ZookeeperRegistry.java:196
+                 */
                 listener.childChanged(path,
                         // if path is null, curator using watcher will throw NullPointerException.
                         // if client connect or disconnect to server, zookeeper will queue
                         // watched event(Watcher.Event.EventType.None, .., path = null).
                         StringUtils.isNotEmpty(path)
+                                // 再次创建监听
                                 ? client.getChildren().usingWatcher(this).forPath(path)
                                 : Collections.<String>emptyList());
             }

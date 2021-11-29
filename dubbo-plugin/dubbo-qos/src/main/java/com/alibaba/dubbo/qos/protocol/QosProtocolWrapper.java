@@ -53,21 +53,41 @@ public class QosProtocolWrapper implements Protocol {
         return protocol.getDefaultPort();
     }
 
+    /**
+     * protocol接口调用export时的Qos修饰类的export修饰
+     * @param invoker
+     * @param <T>
+     * @return
+     * @throws RpcException
+     */
     @Override
     public <T> Exporter<T> export(Invoker<T> invoker) throws RpcException {
+        // register:// 协议
         if (Constants.REGISTRY_PROTOCOL.equals(invoker.getUrl().getProtocol())) {
             startQosServer(invoker.getUrl());
             return protocol.export(invoker);
         }
+        // dubbo:// 协议
         return protocol.export(invoker);
     }
 
+    /**
+     * protocol调用ref生成reference代理时，qos修饰类的ref修饰
+     *
+     * @param type
+     * @param url
+     * @param <T>
+     * @return
+     * @throws RpcException
+     */
     @Override
     public <T> Invoker<T> refer(Class<T> type, URL url) throws RpcException {
+        // register:// 协议
         if (Constants.REGISTRY_PROTOCOL.equals(url.getProtocol())) {
             startQosServer(url);
             return protocol.refer(type, url);
         }
+        // dubbo:// 协议
         return protocol.refer(type, url);
     }
 

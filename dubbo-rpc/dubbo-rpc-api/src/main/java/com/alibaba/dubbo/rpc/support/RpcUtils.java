@@ -155,6 +155,13 @@ public class RpcUtils {
         return isAsync;
     }
 
+    /**
+     * 获取@Reference(check = false,methods = {@Method(name = "echo",isReturn = false)})
+     *
+     * @param url
+     * @param inv
+     * @return
+     */
     public static boolean isOneway(URL url, Invocation inv) {
         boolean isOneway;
         if (Boolean.FALSE.toString().equals(inv.getAttachment(Constants.RETURN_KEY))) {
